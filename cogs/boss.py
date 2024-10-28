@@ -106,7 +106,7 @@ class BossCog(commands.Cog):
                         user_id
                     )
 
-                self.current_boss = None  # Reseta o boss para a próxima vez
+                self.current_boss = None
 
     @tasks.loop(seconds=60)
     async def boss_attack_task(self):
@@ -139,6 +139,6 @@ class BossCog(commands.Cog):
         if channel:
             await channel.send(f"😈 **{self.current_boss['name']}** está zombando de {player_name}! Você realmente acha que pode me derrotar? 😈")
 
-# Configuração para adicionar o cog
+# Função para configurar o cog
 def setup(bot):
     bot.add_cog(BossCog(bot))  # Adiciona o cog de forma síncrona
