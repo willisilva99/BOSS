@@ -267,7 +267,7 @@ class BossCog(commands.Cog):
             embed.add_field(name="Ferimentos", value=wounds, inline=True)
             await ctx.send(embed=embed)
 
-    # Eventos adicionais podem ser adicionados aqui (como destruição de recompensas pelo boss)
+        # Eventos adicionais podem ser adicionados aqui (como destruição de recompensas pelo boss)
 
 # Configuração para adicionar o cog
 def setup(bot):
