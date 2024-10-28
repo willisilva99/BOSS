@@ -20,7 +20,6 @@ class BossCog(commands.Cog):
     def cog_unload(self):
         self.boss_attack_task.cancel()
 
-    # Definição dos bosses e armas
     bosses = [
         {"name": "Zumbi Sádico", "hp": 1500, "attack_power": 100},
         {"name": "Zumbi Ancião", "hp": 2000, "attack_power": 150},
@@ -31,7 +30,6 @@ class BossCog(commands.Cog):
 
     @commands.command(name="boss")
     async def spawn_or_attack_boss(self, ctx):
-        # Verifica se o comando está sendo executado no canal correto
         if ctx.channel.id != self.commands_channel_id:
             await ctx.send(f"{ctx.author.mention}, use os comandos do boss apenas no canal designado.")
             return
@@ -63,7 +61,6 @@ class BossCog(commands.Cog):
 
             await self.announce_boss_attack(ctx.guild)
         else:
-            # Caso o boss esteja ativo, realiza um ataque
             damage = random.randint(50, 150)
             async with self.bot.pool.acquire() as connection:
                 await connection.execute("UPDATE players SET xp = xp + $1 WHERE user_id = $2", damage, user_id)
@@ -84,7 +81,6 @@ class BossCog(commands.Cog):
             await ctx.send(f"{ctx.author.display_name} atacou o boss e causou {damage} de dano!")
             await ctx.send(f"**{self.current_boss['name']}** tem {self.current_boss['current_hp']} de HP restante.")
 
-            # Chance de o jogador morrer
             death_chance = random.randint(1, 100)
             if death_chance <= 5:
                 await ctx.send(f"💀 {ctx.author.mention} foi morto pelo boss!")
