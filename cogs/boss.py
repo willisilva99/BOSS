@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands, tasks
 import random
 import time
+import asyncio  # Adicionando a importação do asyncio
 
 class BossCog(commands.Cog):
     def __init__(self, bot):
@@ -79,4 +80,4 @@ async def setup(bot):
 
 # Chame esta função ao carregar o cog
 def setup(bot):
-    asyncio.create_task(setup(bot))
+    asyncio.create_task(setup(bot))  # Inicia a função setup de forma assíncrona
