@@ -123,6 +123,7 @@ class BossCog(commands.Cog):
 
     @boss_attack_task.before_loop
     async def before_boss_attack(self):
+        # Aguarda até que o bot esteja pronto
         await self.bot.wait_until_ready()
 
     async def announce_boss_attack(self, guild):
