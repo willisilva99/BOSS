@@ -28,9 +28,41 @@ cogs = [
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 async def setup_database():
-    """Configura a conexão com o banco de dados."""
+    """Configura a conexão com o banco de dados e cria as tabelas necessárias."""
     bot.pool = await asyncpg.create_pool(DATABASE_URL)
     print("Banco de dados conectado com sucesso.")
+
+    async with bot.pool.acquire() as connection:
+        # Cria a tabela 'players' se não existir
+        await connection.execute("""
+        CREATE TABLE IF NOT EXISTS players (
+            user_id BIGINT PRIMARY KEY,
+            wounds INTEGER DEFAULT 0,
+            money INTEGER DEFAULT 1000,
+            xp INTEGER DEFAULT 0,
+            level INTEGER DEFAULT 1
+        );
+        """)
+
+        # Cria a tabela 'inventory' se não existir
+        await connection.execute("""
+        CREATE TABLE IF NOT EXISTS inventory (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT REFERENCES players(user_id) ON DELETE CASCADE,
+            item TEXT NOT NULL
+        );
+        """)
+
+        # Cria a tabela 'weapons' se não existir (opcional)
+        await connection.execute("""
+        CREATE TABLE IF NOT EXISTS weapons (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT REFERENCES players(user_id) ON DELETE CASCADE,
+            weapon TEXT NOT NULL
+        );
+        """)
+
+    print("Tabelas criadas ou já existentes.")
 
 # Carregar cada cog
 async def load_cogs():
@@ -48,7 +80,7 @@ async def on_ready():
 
 # Função de setup principal
 async def main():
-    await setup_database()  # Configura o banco de dados
+    await setup_database()  # Configura o banco de dados e cria as tabelas
     await load_cogs()       # Carrega os cogs
     await bot.start(os.getenv("TOKEN"))
 
