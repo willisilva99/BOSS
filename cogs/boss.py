@@ -9,7 +9,7 @@ class BossCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.current_boss = None
-        self.cooldown_time = 3600
+        self.cooldown_time = 3600  # 1 hora em segundos
         self.last_spawn_time = 0
         self.boss_attack_task.start()
 
@@ -20,6 +20,7 @@ class BossCog(commands.Cog):
     def cog_unload(self):
         self.boss_attack_task.cancel()
 
+    # Definição dos bosses e armas
     bosses = [
         {"name": "Zumbi Sádico", "hp": 1500, "description": "Um zumbi incrivelmente forte e resistente!", "attack_power": 100},
         {"name": "Zumbi Ancião", "hp": 2000, "description": "Um zumbi com habilidades místicas.", "attack_power": 150},
@@ -30,6 +31,7 @@ class BossCog(commands.Cog):
 
     @commands.command(name="boss")
     async def spawn_or_attack_boss(self, ctx):
+        # Verifica se o comando está sendo executado no canal correto
         if ctx.channel.id != self.commands_channel_id:
             await ctx.send(f"{ctx.author.mention}, use os comandos do boss apenas no canal designado.")
             return
@@ -61,6 +63,7 @@ class BossCog(commands.Cog):
 
             await self.announce_boss_attack(ctx.guild)
         else:
+            # Caso o boss esteja ativo, realiza um ataque
             damage = random.randint(50, 150)
             async with self.bot.pool.acquire() as connection:
                 await connection.execute("UPDATE players SET xp = xp + $1 WHERE user_id = $2", damage, user_id)
@@ -81,6 +84,7 @@ class BossCog(commands.Cog):
             await ctx.send(f"{ctx.author.display_name} atacou o boss e causou {damage} de dano!")
             await ctx.send(f"**{self.current_boss['name']}** tem {self.current_boss['current_hp']} de HP restante.")
 
+            # Chance de o jogador morrer
             death_chance = random.randint(1, 100)
             if death_chance <= 5:
                 await ctx.send(f"💀 {ctx.author.mention} foi morto pelo boss!")
@@ -102,7 +106,7 @@ class BossCog(commands.Cog):
                         user_id
                     )
 
-                self.current_boss = None
+                self.current_boss = None  # Reseta o boss para a próxima vez
 
     @tasks.loop(seconds=60)
     async def boss_attack_task(self):
@@ -135,5 +139,6 @@ class BossCog(commands.Cog):
         if channel:
             await channel.send(f"😈 **{self.current_boss['name']}** está zombando de {player_name}! Você realmente acha que pode me derrotar? 😈")
 
-def setup(bot: commands.Bot):
-    bot.add_cog(BossCog(bot))  # Remove o 'await' e deixe como uma função síncrona
+# Configuração para adicionar o cog
+def setup(bot):
+    bot.add_cog(BossCog(bot))  # Adiciona o cog de forma síncrona
