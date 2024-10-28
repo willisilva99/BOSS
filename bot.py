@@ -1,7 +1,7 @@
 # bot.py
 
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 import os
 import asyncio
 import asyncpg
@@ -21,7 +21,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 async def setup_database():
     bot.pool = await asyncpg.create_pool(DATABASE_URL)
     async with bot.pool.acquire() as connection:
-        # Criar tabelas necessárias
+        # Criação de tabelas
         await connection.execute("""
             CREATE TABLE IF NOT EXISTS players (
                 user_id BIGINT PRIMARY KEY,
@@ -39,8 +39,8 @@ async def setup_database():
             );
         """)
 
-async def load_cogs():
-    await bot.load_extension("cogs.boss")  # Carrega o cog de forma assíncrona
+def load_cogs():
+    bot.load_extension("cogs.boss")  # Carrega o cog de forma síncrona
 
 @bot.event
 async def on_ready():
@@ -48,7 +48,7 @@ async def on_ready():
 
 async def main():
     await setup_database()
-    await load_cogs()  # Garante que o carregamento é assíncrono
+    load_cogs()       # Carrega os cogs de forma síncrona
     await bot.start(os.getenv("TOKEN"))
 
 if __name__ == "__main__":
