@@ -1,101 +1,146 @@
-# bot.py
+# cogs/boss.py
 
 import discord
-from discord.ext import commands
-import os
+from discord.ext import commands, tasks
+import random
 import asyncio
 import asyncpg
-from dotenv import load_dotenv
+import time
 
-# Carrega variáveis de ambiente do arquivo .env (se estiver usando localmente)
-load_dotenv()
+class BossCog(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.current_boss = None
+        self.cooldown_time = 3600  # 1 hora em segundos
+        self.last_spawn_time = 0
+        self.boss_attack_task.start()
 
-# Configuração de intents e prefixo
-intents = discord.Intents.default()
-intents.messages = True
-intents.guilds = True
-intents.message_content = True
+        # Definindo IDs específicos dos canais
+        self.announcement_channel_id = 1186636197934661632
+        self.commands_channel_id = 1299092242673303552
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+    def cog_unload(self):
+        self.boss_attack_task.cancel()
 
-# Lista de cogs para carregar
-cogs = [
-    "boss",  # Adicionando o boss cog
-    # Adicione outros cogs aqui, se houver
-]
+    # Definição dos bosses e armas
+    bosses = [
+        {"name": "Zumbi Sádico", "hp": 1500, "description": "Um zumbi incrivelmente forte e resistente!", "attack_power": 100},
+        {"name": "Zumbi Ancião", "hp": 2000, "description": "Um zumbi com habilidades místicas.", "attack_power": 150},
+        {"name": "Zumbi Destruidor", "hp": 2500, "description": "O mais poderoso dos zumbis, destruidor de mundos!", "attack_power": 200}
+    ]
 
-# Conexão com o banco de dados
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    print("Erro: DATABASE_URL não está definida.")
-    exit(1)
-else:
-    print("DATABASE_URL está definida.")
+    weapons = ["SNIPER ADAMANTY", "SNIPER EMBERIUM", "SNIPER BOSS LENDÁRIA"]
 
-async def setup_database():
-    """Configura a conexão com o banco de dados e cria as tabelas necessárias."""
-    try:
-        bot.pool = await asyncpg.create_pool(DATABASE_URL)
-        print("Banco de dados conectado com sucesso.")
-    except Exception as e:
-        print(f"Erro ao conectar ao banco de dados: {e}")
-        exit(1)
+    @commands.command(name="boss")
+    async def spawn_or_attack_boss(self, ctx):
+        if ctx.channel.id != self.commands_channel_id:
+            await ctx.send(f"{ctx.author.mention}, use os comandos do boss apenas no canal designado.")
+            return
 
-    async with bot.pool.acquire() as connection:
-        try:
-            # Cria a tabela 'players' se não existir
-            await connection.execute("""
-            CREATE TABLE IF NOT EXISTS players (
-                user_id BIGINT PRIMARY KEY,
-                wounds INTEGER DEFAULT 0,
-                money INTEGER DEFAULT 1000,
-                xp INTEGER DEFAULT 0,
-                level INTEGER DEFAULT 1
-            );
-            """)
+        user_id = ctx.author.id
+        async with self.bot.pool.acquire() as connection:
+            row = await connection.fetchrow("SELECT wounds, money, xp, level FROM players WHERE user_id = $1", user_id)
+            if row:
+                wounds = row['wounds']
+                if wounds > 0:
+                    await ctx.send(f"{ctx.author.mention}, você está ferido e precisa se curar antes de atacar o boss! Use `!heal` na loja.")
+                    return
+            else:
+                # Cria registro do jogador
+                await connection.execute(
+                    "INSERT INTO players(user_id, wounds, money, xp, level) VALUES($1, $2, $3, $4, $5)",
+                    user_id, 0, 1000, 0, 1
+                )
 
-            # Cria a tabela 'inventory' se não existir
-            await connection.execute("""
-            CREATE TABLE IF NOT EXISTS inventory (
-                id SERIAL PRIMARY KEY,
-                user_id BIGINT REFERENCES players(user_id) ON DELETE CASCADE,
-                item TEXT NOT NULL
-            );
-            """)
+        if not self.current_boss:
+            current_time = time.time()
+            if current_time - self.last_spawn_time < self.cooldown_time:
+                remaining = int(self.cooldown_time - (current_time - self.last_spawn_time))
+                await ctx.send(f"O boss ainda está descansando! Tente novamente em {remaining // 60} minutos e {remaining % 60} segundos.")
+                return
 
-            # Cria a tabela 'weapons' se não existir (opcional)
-            await connection.execute("""
-            CREATE TABLE IF NOT EXISTS weapons (
-                id SERIAL PRIMARY KEY,
-                user_id BIGINT REFERENCES players(user_id) ON DELETE CASCADE,
-                weapon TEXT NOT NULL
-            );
-            """)
+            self.current_boss = random.choice(self.bosses)
+            self.current_boss["current_hp"] = self.current_boss["hp"]
+            self.last_spawn_time = current_time
 
-            print("Tabelas criadas ou já existentes.")
-        except Exception as e:
-            print(f"Erro ao criar tabelas: {e}")
-            exit(1)
+            await self.announce_boss_attack(ctx.guild)
+        else:
+            # Realiza ataque ao boss
+            damage = random.randint(50, 150)
+            async with self.bot.pool.acquire() as connection:
+                await connection.execute("UPDATE players SET xp = xp + $1 WHERE user_id = $2", damage, user_id)
+                await connection.execute("UPDATE players SET money = money + $1 WHERE user_id = $2", damage * 2, user_id)
 
-async def load_cogs():
-    """Carrega os cogs da lista."""
-    for cog in cogs:
-        try:
-            await bot.load_extension(f"cogs.{cog}")
-            print(f"Cog {cog} carregado com sucesso.")
-        except Exception as e:
-            print(f"Erro ao carregar o cog {cog}: {e}")
+                row = await connection.fetchrow("SELECT xp, level FROM players WHERE user_id = $1", user_id)
+                xp = row['xp']
+                level = row['level']
+                if xp >= level * 1000:
+                    await connection.execute(
+                        "UPDATE players SET level = level + 1, xp = xp - $1 WHERE user_id = $2",
+                        level * 1000, user_id
+                    )
+                    await ctx.send(f"🎉 Parabéns {ctx.author.mention}! Você subiu para o nível {level + 1}!")
 
-@bot.event
-async def on_ready():
-    print(f"Bot conectado como {bot.user}")
+            self.current_boss["current_hp"] -= damage
 
-# Função de setup principal
-async def main():
-    await setup_database()  # Configura o banco de dados e cria as tabelas
-    await load_cogs()       # Carrega os cogs
-    await bot.start(os.getenv("TOKEN"))
+            await ctx.send(f"{ctx.author.display_name} atacou o boss e causou {damage} de dano!")
+            await ctx.send(f"**{self.current_boss['name']}** tem {self.current_boss['current_hp']} de HP restante.")
 
-# Iniciar o bot
-if __name__ == "__main__":
-    asyncio.run(main())
+            # Chance de o jogador morrer
+            death_chance = random.randint(1, 100)
+            if death_chance <= 5:
+                await ctx.send(f"💀 {ctx.author.mention} foi morto pelo boss!")
+                async with self.bot.pool.acquire() as connection:
+                    await connection.execute("UPDATE players SET wounds = wounds + 1 WHERE user_id = $1", user_id)
+
+            if self.current_boss["current_hp"] <= 0:
+                weapon_reward = random.choice(self.weapons)
+                await ctx.send(f"🏆 O boss **{self.current_boss['name']}** foi derrotado! Recompensa: **{weapon_reward}** 🎁")
+                await self.announce_boss_mock(ctx.guild, ctx.author.display_name)
+
+                async with self.bot.pool.acquire() as connection:
+                    await connection.execute(
+                        "INSERT INTO inventory(user_id, item) VALUES($1, $2)",
+                        user_id, weapon_reward
+                    )
+                    await connection.execute(
+                        "UPDATE players SET money = money + 500 WHERE user_id = $1",
+                        user_id
+                    )
+
+                self.current_boss = None
+
+    @tasks.loop(seconds=60)
+    async def boss_attack_task(self):
+        if self.current_boss:
+            guilds = self.bot.guilds
+            if guilds:
+                guild = random.choice(guilds)
+                channel = guild.get_channel(self.announcement_channel_id)
+                damage = self.current_boss.get("attack_power", 100)
+                async with self.bot.pool.acquire() as connection:
+                    row = await connection.fetchrow("SELECT user_id FROM players ORDER BY random() LIMIT 1")
+                    if row:
+                        user_id = row['user_id']
+                        await connection.execute("UPDATE players SET wounds = wounds + 1 WHERE user_id = $1", user_id)
+                        user = guild.get_member(user_id)
+                        if user and channel:
+                            await channel.send(f"⚔️ **{self.current_boss['name']}** atacou {user.mention} causando {damage} de dano!")
+
+    @boss_attack_task.before_loop
+    async def before_boss_attack(self):
+        await self.bot.wait_until_ready()
+
+    async def announce_boss_attack(self, guild):
+        channel = guild.get_channel(self.announcement_channel_id)
+        if channel:
+            await channel.send(f"⚔️ **{self.current_boss['name']}** está atacando todos os jogadores! Preparem-se para a batalha! ⚔️")
+
+    async def announce_boss_mock(self, guild, player_name):
+        channel = guild.get_channel(self.announcement_channel_id)
+        if channel:
+            await channel.send(f"😈 **{self.current_boss['name']}** está zombando de {player_name}! Você realmente acha que pode me derrotar? 😈")
+
+# Configuração para adicionar o cog
+def setup(bot):
+    bot.add_cog(BossCog(bot))
