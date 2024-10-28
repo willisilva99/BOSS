@@ -143,4 +143,4 @@ class BossCog(commands.Cog):
 
 # Configuração para adicionar o cog
 def setup(bot):
-    bot.add_cog(BossCog(bot))  # Remove o 'await' aqui
+    bot.add_cog(BossCog(bot))  # Aqui NÃO deve haver 'await'
