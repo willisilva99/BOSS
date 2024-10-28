@@ -152,10 +152,10 @@ class BossCog(commands.Cog):
     async def shop(self, ctx):
         """Exibe a loja onde os jogadores podem comprar itens."""
         shop_items = {
-            "🍎 Potion": 100,      # Cura 1 ferimento
-            "🔫 Sniper Adamanty": 1000,
-            "🔥 Sniper Emberium": 2000,
-            "💣 Sniper Boss Lendária": 5000
+            "🍎 Potion": 100,           # Cura 1 ferimento
+            "🔫 Sniper Adamanty": 1000, # Arma para atacar o boss
+            "🔥 Sniper Emberium": 2000, # Arma para atacar o boss
+            "💣 Sniper Boss Lendária": 5000 # Arma para atacar o boss
         }
         embed = discord.Embed(title="🏪 Loja do Boss", color=discord.Color.blue())
         for item, price in shop_items.items():
