@@ -22,9 +22,9 @@ class BossCog(commands.Cog):
 
     # Definição dos bosses e armas
     bosses = [
-        {"name": "Zumbi Sádico", "hp": 1500, "description": "Um zumbi incrivelmente forte e resistente!", "attack_power": 100},
-        {"name": "Zumbi Ancião", "hp": 2000, "description": "Um zumbi com habilidades místicas.", "attack_power": 150},
-        {"name": "Zumbi Destruidor", "hp": 2500, "description": "O mais poderoso dos zumbis, destruidor de mundos!", "attack_power": 200}
+        {"name": "Zumbi Sádico", "hp": 1500, "attack_power": 100},
+        {"name": "Zumbi Ancião", "hp": 2000, "attack_power": 150},
+        {"name": "Zumbi Destruidor", "hp": 2500, "attack_power": 200}
     ]
 
     weapons = ["SNIPER ADAMANTY", "SNIPER EMBERIUM", "SNIPER BOSS LENDÁRIA"]
@@ -38,7 +38,7 @@ class BossCog(commands.Cog):
 
         user_id = ctx.author.id
         async with self.bot.pool.acquire() as connection:
-            row = await connection.fetchrow("SELECT wounds, money, xp, level FROM players WHERE user_id = $1", user_id)
+            row = await connection.fetchrow("SELECT wounds FROM players WHERE user_id = $1", user_id)
             if row:
                 wounds = row['wounds']
                 if wounds > 0:
