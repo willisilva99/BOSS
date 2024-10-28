@@ -26,45 +26,57 @@ cogs = [
 
 # Conexão com o banco de dados
 DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    print("Erro: DATABASE_URL não está definida.")
+    exit(1)
+else:
+    print("DATABASE_URL está definida.")
 
 async def setup_database():
     """Configura a conexão com o banco de dados e cria as tabelas necessárias."""
-    bot.pool = await asyncpg.create_pool(DATABASE_URL)
-    print("Banco de dados conectado com sucesso.")
+    try:
+        bot.pool = await asyncpg.create_pool(DATABASE_URL)
+        print("Banco de dados conectado com sucesso.")
+    except Exception as e:
+        print(f"Erro ao conectar ao banco de dados: {e}")
+        exit(1)
 
     async with bot.pool.acquire() as connection:
-        # Cria a tabela 'players' se não existir
-        await connection.execute("""
-        CREATE TABLE IF NOT EXISTS players (
-            user_id BIGINT PRIMARY KEY,
-            wounds INTEGER DEFAULT 0,
-            money INTEGER DEFAULT 1000,
-            xp INTEGER DEFAULT 0,
-            level INTEGER DEFAULT 1
-        );
-        """)
+        try:
+            # Cria a tabela 'players' se não existir
+            await connection.execute("""
+            CREATE TABLE IF NOT EXISTS players (
+                user_id BIGINT PRIMARY KEY,
+                wounds INTEGER DEFAULT 0,
+                money INTEGER DEFAULT 1000,
+                xp INTEGER DEFAULT 0,
+                level INTEGER DEFAULT 1
+            );
+            """)
 
-        # Cria a tabela 'inventory' se não existir
-        await connection.execute("""
-        CREATE TABLE IF NOT EXISTS inventory (
-            id SERIAL PRIMARY KEY,
-            user_id BIGINT REFERENCES players(user_id) ON DELETE CASCADE,
-            item TEXT NOT NULL
-        );
-        """)
+            # Cria a tabela 'inventory' se não existir
+            await connection.execute("""
+            CREATE TABLE IF NOT EXISTS inventory (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT REFERENCES players(user_id) ON DELETE CASCADE,
+                item TEXT NOT NULL
+            );
+            """)
 
-        # Cria a tabela 'weapons' se não existir (opcional)
-        await connection.execute("""
-        CREATE TABLE IF NOT EXISTS weapons (
-            id SERIAL PRIMARY KEY,
-            user_id BIGINT REFERENCES players(user_id) ON DELETE CASCADE,
-            weapon TEXT NOT NULL
-        );
-        """)
+            # Cria a tabela 'weapons' se não existir (opcional)
+            await connection.execute("""
+            CREATE TABLE IF NOT EXISTS weapons (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT REFERENCES players(user_id) ON DELETE CASCADE,
+                weapon TEXT NOT NULL
+            );
+            """)
 
-    print("Tabelas criadas ou já existentes.")
+            print("Tabelas criadas ou já existentes.")
+        except Exception as e:
+            print(f"Erro ao criar tabelas: {e}")
+            exit(1)
 
-# Carregar cada cog
 async def load_cogs():
     """Carrega os cogs da lista."""
     for cog in cogs:
