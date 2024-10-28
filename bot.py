@@ -9,19 +9,12 @@ intents.messages = True
 intents.guilds = True
 intents.message_content = True
 
-bot = commands.Bot(command_prefix="n!", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Lista de cogs
-cogs = ["boss_cog"]  # Cog do boss
-
+# Carrega os cogs
 async def load_cogs():
-    """Carrega os cogs da lista."""
-    for cog in cogs:
-        try:
-            bot.load_extension(f'cogs.{cog}')
-            print(f'Cog {cog} carregado com sucesso.')
-        except Exception as e:
-            print(f'Erro ao carregar o cog {cog}: {e}')
+    """Carrega os cogs da pasta cogs."""
+    bot.load_extension("cogs.boss")
 
 @bot.event
 async def on_ready():
@@ -29,7 +22,7 @@ async def on_ready():
 
 # Função de setup principal
 async def setup():
-    await load_cogs()  # Carrega os cogs
+    await load_cogs()  # Carrega o cog do boss
     await bot.start(os.getenv("TOKEN"))
 
 # Iniciar o bot
