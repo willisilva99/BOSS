@@ -30,6 +30,7 @@ class BossCog(commands.Cog):
                 await ctx.send(f"O boss ainda está descansando! Tente novamente em {remaining // 60} minutos e {remaining % 60} segundos.")
                 return
 
+            # Spawn do boss
             self.current_boss = random.choice(self.bosses)
             self.current_boss["current_hp"] = self.current_boss["hp"]
             self.last_spawn_time = current_time
@@ -44,13 +45,30 @@ class BossCog(commands.Cog):
             if self.current_boss["current_hp"] <= 0:
                 weapon_reward = random.choice(self.weapons)
                 await ctx.send(f"🏆 O boss **{self.current_boss['name']}** foi derrotado! Recompensa: **{weapon_reward}** 🎁")
+                
+                # Adiciona a recompensa ao inventário do jogador
+                async with self.bot.pool.acquire() as connection:
+                    await connection.execute(
+                        "INSERT INTO inventory(user_id, item) VALUES($1, $2)",
+                        user_id, weapon_reward
+                    )
                 self.current_boss = None  # Reseta o boss
 
     @tasks.loop(seconds=60)
     async def boss_attack_task(self):
         if self.current_boss:
-            # Lógica para o ataque do boss pode ser implementada aqui
-            pass
+            # Aqui você pode implementar a lógica do boss atacando os jogadores
+            # Por exemplo, selecionando um jogador aleatório para atacar
+            guild = discord.utils.get(self.bot.guilds)
+            if guild:
+                players = await self.bot.pool.fetch("SELECT user_id FROM players")
+                if players:
+                    user_id = random.choice(players)['user_id']
+                    user = guild.get_member(user_id)
+                    if user:
+                        damage = self.current_boss["attack_power"]
+                        await self.bot.pool.execute("UPDATE players SET wounds = wounds + 1 WHERE user_id = $1", user_id)
+                        await user.send(f"⚔️ O boss **{self.current_boss['name']}** atacou você e causou {damage} de dano!")
 
     @boss_attack_task.before_loop
     async def before_boss_attack(self):
