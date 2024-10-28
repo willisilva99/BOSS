@@ -40,8 +40,8 @@ async def setup_database():
         """)
 
 async def load_cogs():
-    # Carrega o cog de forma síncrona
-    bot.load_extension("cogs.boss")
+    # Carrega o cog de forma assíncrona
+    await bot.load_extension("cogs.boss")
 
 @bot.event
 async def on_ready():
@@ -49,7 +49,7 @@ async def on_ready():
 
 async def setup():
     await setup_database()  # Configura o banco de dados
-    load_cogs()            # Carrega os cogs de forma síncrona
+    await load_cogs()      # Carrega os cogs de forma assíncrona
 
 async def main():
     await setup()           # Chama a função setup assíncrona
