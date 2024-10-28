@@ -14,7 +14,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # Carrega os cogs
 async def load_cogs():
     """Carrega os cogs da pasta cogs."""
-    bot.load_extension("cogs.boss")
+    await bot.load_extension("cogs.boss")
 
 @bot.event
 async def on_ready():
