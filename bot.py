@@ -21,7 +21,6 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 async def setup_database():
     bot.pool = await asyncpg.create_pool(DATABASE_URL)
     async with bot.pool.acquire() as connection:
-        # Criação de tabelas
         await connection.execute("""
             CREATE TABLE IF NOT EXISTS players (
                 user_id BIGINT PRIMARY KEY,
@@ -39,9 +38,9 @@ async def setup_database():
             );
         """)
 
-async def load_cogs():
-    # Carrega o cog de forma assíncrona
-    await bot.load_extension("cogs.boss")
+def load_cogs():
+    # Carrega o cog de forma síncrona
+    bot.load_extension("cogs.boss")
 
 @bot.event
 async def on_ready():
@@ -49,7 +48,7 @@ async def on_ready():
 
 async def setup():
     await setup_database()  # Configura o banco de dados
-    await load_cogs()       # Carrega os cogs
+    load_cogs()            # Carrega os cogs de forma síncrona
 
 async def main():
     await setup()           # Chama a função setup assíncrona
@@ -57,3 +56,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
