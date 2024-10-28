@@ -39,8 +39,9 @@ async def setup_database():
             );
         """)
 
-def load_cogs():
-    bot.load_extension("cogs.boss")  # Carrega o cog de forma síncrona
+# Função assíncrona para carregar o cog
+async def load_cogs():
+    await bot.load_extension("cogs.boss")  # Carrega o cog de forma assíncrona
 
 @bot.event
 async def on_ready():
@@ -48,7 +49,7 @@ async def on_ready():
 
 async def main():
     await setup_database()
-    load_cogs()       # Carrega os cogs de forma síncrona
+    await load_cogs()  # Garante que o carregamento é assíncrono
     await bot.start(os.getenv("TOKEN"))
 
 if __name__ == "__main__":
