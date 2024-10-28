@@ -58,7 +58,6 @@ class BossCog(commands.Cog):
     async def boss_attack_task(self):
         if self.current_boss:
             # Aqui você pode implementar a lógica do boss atacando os jogadores
-            # Por exemplo, selecionando um jogador aleatório para atacar
             guild = discord.utils.get(self.bot.guilds)
             if guild:
                 players = await self.bot.pool.fetch("SELECT user_id FROM players")
@@ -75,5 +74,9 @@ class BossCog(commands.Cog):
         await self.bot.wait_until_ready()
 
 # Função para configurar o cog
+async def setup(bot):
+    await bot.add_cog(BossCog(bot))  # Adiciona o cog de forma assíncrona
+
+# Chame esta função ao carregar o cog
 def setup(bot):
-    bot.add_cog(BossCog(bot))  # Adiciona o cog de forma síncrona
+    asyncio.create_task(setup(bot))
