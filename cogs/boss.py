@@ -7,7 +7,6 @@ class BossCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.cooldown_time = 3600  # 1 hora de cooldown global
-        self.last_attack_time = {}
         self.current_boss = None
         self.boss_attack_task.start()
         self.rank_update.start()
@@ -32,70 +31,98 @@ class BossCog(commands.Cog):
         self.commands_channel_id = 1299092242673303552
         self.exempt_role_id = 1296631135442309160  # Cargo com permissão de ignorar cooldown
 
+    async def ensure_player(self, user_id):
+        """Garante que o usuário tenha uma entrada na tabela 'players'."""
+        async with self.bot.pool.acquire() as connection:
+            # Tenta buscar o jogador
+            result = await connection.fetchrow("SELECT * FROM players WHERE user_id = $1", user_id)
+            if not result:
+                # Se não existir, insere com valores padrão
+                await connection.execute("""
+                    INSERT INTO players (user_id, wounds, money, xp, level, infected, damage_debuff)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                """, user_id, 0, 1000, 0, 1, False, False)
+                print(f"Jogador {user_id} adicionado à tabela 'players'.")
+
     @commands.command(name="boss")
-    @commands.cooldown(1, 30, commands.BucketType.user)  # Cooldown pessoal de 30 segundos
+    @commands.cooldown(1, 3600, commands.BucketType.default)  # 1 hora de cooldown global
     async def boss_command(self, ctx):
         if ctx.channel.id != self.commands_channel_id:
             await ctx.send("⚠️ Este comando só pode ser usado no canal designado para combates.")
             return
 
         user_id = ctx.author.id
-        current_time = time.time()
-        
+
+        # Garante que o jogador existe no banco de dados
+        await self.ensure_player(user_id)
+
         # Verifica se o jogador tem o cargo que ignora o cooldown global
         has_exempt_role = any(role.id == self.exempt_role_id for role in ctx.author.roles)
-        
-        # Cooldown global para jogadores sem o cargo
-        if not self.current_boss and not has_exempt_role:
-            if current_time - self.last_attack_time.get(user_id, 0) < self.cooldown_time:
-                remaining = int(self.cooldown_time - (current_time - self.last_attack_time.get(user_id, 0)))
-                await ctx.send(f"💤 O boss está descansando! Tente novamente em {remaining // 60} minutos.")
-                return
-            
+
+        if has_exempt_role:
+            # Executa a lógica sem aplicar o cooldown
+            await self.invocar_boss(ctx, user_id)
+        else:
+            if not self.current_boss:
+                # Invocação do Boss
+                self.current_boss = random.choice(self.bosses)
+                self.current_boss["current_hp"] = self.current_boss["hp"]
+                self.current_boss["last_attack_time"] = time.time()
+                embed = discord.Embed(
+                    title="⚔️ Um Boss Apareceu!",
+                    description=f"**{self.current_boss['name']}** surgiu com {self.current_boss['current_hp']} HP! Preparem-se para a batalha.",
+                    color=discord.Color.red()
+                )
+                await ctx.send(embed=embed)
+            else:
+                # Verifica se o jogador está infectado
+                if await self.is_infected(user_id):
+                    await ctx.send("❌ Você está infectado e não pode atacar o boss. Encontre uma cura primeiro!")
+                    return
+                
+                # Ataque ao Boss
+                damage = random.randint(50, 150)
+                if await self.has_damage_debuff(user_id):
+                    damage = int(damage * 0.75)  # Reduz o dano em 25% se o jogador tiver debuff
+                    await ctx.send(f"💀 {ctx.author.display_name} está enfraquecido e causou menos dano!")
+
+                self.current_boss["current_hp"] -= damage
+                await self.award_xp(user_id, 10)  # Sistema de XP ao atacar
+
+                # Mensagem do Ataque
+                embed = discord.Embed(
+                    title="💥 Ataque ao Boss",
+                    description=f"{ctx.author.display_name} causou {damage} de dano!\n**HP Restante do Boss:** {self.current_boss['current_hp']}",
+                    color=discord.Color.orange()
+                )
+                await ctx.send(embed=embed)
+
+                # Aplica infecção aleatória e penalidade
+                await self.apply_infection(user_id)
+                await self.apply_damage_debuff(user_id)
+
+                # Checa se o boss foi derrotado
+                if self.current_boss["current_hp"] <= 0:
+                    await self.defeat_boss(ctx, user_id)
+                else:
+                    # Habilidade especial do boss quando HP está baixo
+                    await self.boss_special_ability()
+
+    async def invocar_boss(self, ctx, user_id):
+        """Lógica para invocar o boss."""
+        if not self.current_boss:
             # Invocação do Boss
             self.current_boss = random.choice(self.bosses)
             self.current_boss["current_hp"] = self.current_boss["hp"]
-            self.last_attack_time[user_id] = current_time
+            self.current_boss["last_attack_time"] = time.time()
             embed = discord.Embed(
                 title="⚔️ Um Boss Apareceu!",
                 description=f"**{self.current_boss['name']}** surgiu com {self.current_boss['current_hp']} HP! Preparem-se para a batalha.",
                 color=discord.Color.red()
             )
             await ctx.send(embed=embed)
-
         else:
-            # Verifica se o jogador está infectado
-            if await self.is_infected(user_id):
-                await ctx.send("❌ Você está infectado e não pode atacar o boss. Encontre uma cura primeiro!")
-                return
-            
-            # Ataque ao Boss
-            damage = random.randint(50, 150)
-            if await self.has_damage_debuff(user_id):
-                damage = int(damage * 0.75)  # Reduz o dano em 25% se o jogador tiver debuff
-                await ctx.send(f"💀 {ctx.author.display_name} está enfraquecido e causou menos dano!")
-
-            self.current_boss["current_hp"] -= damage
-            await self.award_xp(user_id, 10)  # Sistema de XP ao atacar
-
-            # Mensagem do Ataque
-            embed = discord.Embed(
-                title="💥 Ataque ao Boss",
-                description=f"{ctx.author.display_name} causou {damage} de dano!\n**HP Restante do Boss:** {self.current_boss['current_hp']}",
-                color=discord.Color.orange()
-            )
-            await ctx.send(embed=embed)
-
-            # Aplica infecção aleatória e penalidade
-            await self.apply_infection(user_id)
-            await self.apply_damage_debuff(user_id)
-
-            # Checa se o boss foi derrotado
-            if self.current_boss["current_hp"] <= 0:
-                await self.defeat_boss(ctx, user_id)
-            else:
-                # Habilidade especial do boss quando HP está baixo
-                await self.boss_special_ability()
+            await ctx.send("⚔️ Já há um boss ativo no momento!")
 
     async def defeat_boss(self, ctx, user_id):
         # Recompensa e reset do boss após derrota
@@ -167,6 +194,9 @@ class BossCog(commands.Cog):
     async def apply_group_penalty(self):
         """Aplica uma penalidade de infecção a todos os jogadores no combate."""
         channel = self.bot.get_channel(self.commands_channel_id)
+        if channel is None:
+            print(f"Canal com ID {self.commands_channel_id} não encontrado.")
+            return
         infected_players = []
         for member in channel.members:
             if member.id != self.bot.user.id:
@@ -244,6 +274,9 @@ class BossCog(commands.Cog):
                 "Sentirão minha ira!"
             ]
             channel = self.bot.get_channel(self.status_channel_id)
+            if channel is None:
+                print(f"Canal com ID {self.status_channel_id} não encontrado.")
+                return
             members = [member.display_name for member in channel.members if member.id != self.bot.user.id]
             if members:
                 embed = discord.Embed(
