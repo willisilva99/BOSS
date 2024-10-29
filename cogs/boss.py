@@ -9,39 +9,33 @@ class BossCog(commands.Cog):
         self.cooldown_time = 3600  # 1 hora de cooldown por usuário
         self.last_attack_time = {}
         self.snipers = ["🔫 SNIPER BOSS RARA", "🔥 SNIPER EMBERIUM", "💎 SNIPER DAMANTY"]
-        
+
         # URLs das imagens dos bosses
         self.boss_images = {
             "Gigante Emberium": {
-                "default": "https://cdn.discordapp.com/attachments/1300796026378256484/1300796094607003773/image.png",
-                "attack": "https://cdn.discordapp.com/attachments/1300796026378256484/1300796526179782758/image.png",
-                "attack_player": "https://cdn.discordapp.com/attachments/1300796026378256484/1300796853016723528/image.png",
-                "flee": "https://cdn.discordapp.com/attachments/1300796026378256484/1300801431405727795/image.png",
-                "defeated": "https://cdn.discordapp.com/attachments/1300796026378256484/1300801821169942568/image.png"
+                "default": "https://i.postimg.cc/Gtfm6xSL/DALL-E-2024-10-29-09-18-46-A-powerful-zombie-boss-named-Emberium-for-a-game-featuring-an-exagge.webp",  # Gigante Emberium
+                "attack": "https://i.postimg.cc/BnH2pxJg/DALL-E-2024-10-29-09-20-36-A-powerful-zombie-boss-named-Emberium-attacking-a-player-in-a-fantasy.webp",  # Ataque Boss
+                "attack_player": "https://i.postimg.cc/zfkKZ8bH/DALL-E-2024-10-29-09-21-49-A-powerful-zombie-boss-named-Emberium-inflicting-damage-on-a-player-i.webp",  # Boss atacando player
+                "flee": "https://i.postimg.cc/k5CKpB4d/DALL-E-2024-10-29-09-40-12-A-dramatic-scene-depicting-a-powerful-zombie-boss-named-Emberium-in-t.webp",  # Boss fugindo
+                "defeated": "https://i.postimg.cc/Kvdnt9hj/DALL-E-2024-10-29-09-41-47-A-dramatic-scene-depicting-a-powerful-zombie-boss-named-Emberium-lyin.webp"  # Boss derrotado
             },
             "Boss das Sombras": {
-                "default": "https://cdn.discordapp.com/attachments/1300802228780666900/image.png",
-                "attack": "https://cdn.discordapp.com/attachments/1300802427645198366/image.png",
-                "attack_player": "https://cdn.discordapp.com/attachments/1300802611120832574/image.png",
-                "flee": "https://cdn.discordapp.com/attachments/1300803016475148298/image.png",
-                "defeated": "https://cdn.discordapp.com/attachments/1300803312894869565/image.png"
+                "default": "https://i.postimg.cc/zvQTt7Ld/DALL-E-2024-10-29-09-43-23-A-powerful-zombie-boss-known-as-Shadow-Boss-in-a-fantasy-game-setting.webp",  # Boss das Sombras
+                "attack": "https://i.postimg.cc/3NNgFVw4/DALL-E-2024-10-29-09-44-13-A-dramatic-fantasy-scene-depicting-a-powerful-zombie-boss-named-Shadow.webp",  # Ataque Boss
+                "attack_player": "https://i.postimg.cc/m2cYcvqK/DALL-E-2024-10-29-09-44-57-A-dramatic-fantasy-scene-depicting-the-powerful-zombie-boss-named-Shad.webp",  # Boss atacando player
+                "flee": "https://i.postimg.cc/NGC8jsN1/DALL-E-2024-10-29-09-46-35-A-dramatic-fantasy-scene-depicting-the-powerful-zombie-boss-named-Shad.webp",  # Boss fugindo
+                "defeated": "https://i.postimg.cc/x8mLZHKn/DALL-E-2024-10-29-09-47-45-A-dramatic-fantasy-scene-depicting-the-powerful-zombie-boss-named-Shad.webp"  # Boss derrotado
             },
             "Mega Boss": {
-                "default": "https://cdn.discordapp.com/attachments/1300803765858730015/image.png",
-                "attack": "https://cdn.discordapp.com/attachments/1300809511325401171/image.png",
-                "attack_player": "https://cdn.discordapp.com/attachments/1300809635137327105/image.png",
-                "flee": "https://cdn.discordapp.com/attachments/1300809809129508956/image.png",
-                "defeated": "https://cdn.discordapp.com/attachments/1300810090147741807/image.png"
+                "default": "https://i.postimg.cc/W3CMSSq5/DALL-E-2024-10-29-09-49-34-A-powerful-fantasy-character-design-of-a-zombie-boss-named-Mega-Boss.webp",  # Mega Boss
+                "attack": "https://i.postimg.cc/FR7yjwzf/DALL-E-2024-10-29-10-06-58-A-dramatic-fantasy-scene-depicting-a-brave-survivor-attacking-the-power.webp",  # Ataque Boss
+                "attack_player": "https://i.postimg.cc/QMNkMFrJ/DALL-E-2024-10-29-10-11-26-A-dramatic-fantasy-scene-depicting-the-powerful-zombie-boss-named-Mega.webp",  # Boss atacando player
+                "flee": "https://i.postimg.cc/2S77m4g5/DALL-E-2024-10-29-10-13-34-A-dramatic-fantasy-scene-depicting-the-powerful-zombie-boss-named-Mega.webp",  # Boss fugindo
+                "defeated": "https://i.postimg.cc/KvL5pXNB/DALL-E-2024-10-29-10-14-38-A-dramatic-fantasy-scene-depicting-the-powerful-zombie-boss-named-Mega.webp"  # Boss derrotado
             }
         }
 
-        # Lista de Bosses com diferentes características e HP elevado para mais dificuldade
-        self.bosses = [
-            {"name": "👹 Mega Boss", "hp": 5000, "attack_chance": 30, "damage_range": (50, 150)},
-            {"name": "👻 Boss das Sombras", "hp": 7000, "attack_chance": 40, "damage_range": (60, 200)},
-            {"name": "💀 Gigante Emberium", "hp": 10000, "attack_chance": 50, "damage_range": (80, 250)},
-        ]
-        
+        # Lista de diálogos dos bosses
         self.boss_dialogues = {
             "invocation": [
                 "🌍 O mundo está em ruínas, e você ousa me desafiar?!",
