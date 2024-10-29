@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands, tasks
 from collections import defaultdict
+import asyncpg
 import asyncio
 import random
 
@@ -30,6 +31,57 @@ class RankCog(commands.Cog):
 
         # ID do canal onde o rank será exibido
         self.channel_id = 1186636197934661632
+
+    async def cog_load(self):
+        # Inicializa a conexão com o banco de dados
+        self.db_pool = await asyncpg.create_pool(dsn="DATABASE_URL")
+
+        # Cria a tabela, se não existir
+        await self.db_pool.execute("""
+            CREATE TABLE IF NOT EXISTS player_rankings (
+                user_id BIGINT PRIMARY KEY,
+                total_damage INTEGER DEFAULT 0,
+                kills INTEGER DEFAULT 0,
+                snipers INTEGER DEFAULT 0
+            )
+        """)
+
+        # Carrega os dados existentes no banco de dados para os rankings
+        await self.load_rankings()
+
+    async def load_rankings(self):
+        """Carrega os rankings do banco de dados ao iniciar o bot."""
+        async with self.db_pool.acquire() as conn:
+            records = await conn.fetch("SELECT * FROM player_rankings")
+            for record in records:
+                self.damage_rank[record["user_id"]] = record["total_damage"]
+                self.kill_rank[record["user_id"]] = record["kills"]
+                self.sniper_rank[record["user_id"]] = record["snipers"]
+
+    async def update_database(self, user_id, field, value):
+        """Atualiza um campo específico no banco de dados para o jogador."""
+        async with self.db_pool.acquire() as conn:
+            await conn.execute(f"""
+                INSERT INTO player_rankings (user_id, {field})
+                VALUES ($1, $2)
+                ON CONFLICT (user_id) DO UPDATE
+                SET {field} = player_rankings.{field} + $2
+            """, user_id, value)
+
+    def record_damage(self, user_id, damage):
+        """Registra o dano causado por um usuário e atualiza o banco de dados."""
+        self.damage_rank[user_id] += damage
+        asyncio.create_task(self.update_database(user_id, "total_damage", damage))
+
+    def record_kill(self, user_id):
+        """Registra uma kill no boss por um usuário e atualiza o banco de dados."""
+        self.kill_rank[user_id] += 1
+        asyncio.create_task(self.update_database(user_id, "kills", 1))
+
+    def record_sniper(self, user_id):
+        """Registra uma sniper ganha por um usuário e atualiza o banco de dados."""
+        self.sniper_rank[user_id] += 1
+        asyncio.create_task(self.update_database(user_id, "snipers", 1))
 
     @commands.Cog.listener()
     async def on_ready(self):
