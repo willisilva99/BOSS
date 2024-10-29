@@ -16,6 +16,29 @@ class BossCog(commands.Cog):
             {"name": "👻 Boss das Sombras", "hp": 7000, "attack_chance": 40, "damage_range": (60, 200)},
             {"name": "💀 Gigante Emberium", "hp": 10000, "attack_chance": 50, "damage_range": (80, 250)},
         ]
+        
+        self.boss_dialogues = {
+            "invocation": [
+                "🌍 O mundo está em ruínas, e você ousa me desafiar?!",
+                "🔥 Seu destino é a destruição, mortais!",
+                "👿 A era dos fracos terminou. Prepare-se para o apocalipse!",
+            ],
+            "attack": [
+                "💀 Sua força é insignificante diante de mim!",
+                "⚔️ Cada golpe seu é uma provocação ao meu poder!",
+                "😈 Vocês nunca vencerão. A nova era será minha!",
+            ],
+            "defeat": [
+                "😱 Não pode ser... A era de trevas... foi interrompida!",
+                "🔥 Eu... voltarei... para consumi-los!",
+                "💔 Este não é o fim... Apenas o início do meu retorno!",
+            ],
+            "escape": [
+                "🏃‍♂️ Vocês acham que me prenderão? Eu sou o apocalipse!",
+                "💨 Adeus, mortais! Esta batalha não é o seu fim!",
+                "😈 A nova era ainda não chegou... mas eu voltarei!",
+            ]
+        }
 
     async def ensure_player(self, user_id):
         # Função para garantir que o jogador tenha uma entrada de dados no banco (pode ser customizado)
@@ -50,6 +73,7 @@ class BossCog(commands.Cog):
             embed = discord.Embed(
                 title="⚔️ Boss Invocado!",
                 description=f"{display_name} invocou o {self.current_boss['name']} com {self.current_boss['hp']} HP!\n"
+                            f"{random.choice(self.boss_dialogues['invocation'])}\n"
                             "Todos devem atacá-lo para derrotá-lo!",
                 color=discord.Color.red()
             )
@@ -83,7 +107,7 @@ class BossCog(commands.Cog):
                     reward_message = self.generate_sniper_drop()
                     embed = discord.Embed(
                         title="🏆 Boss Derrotado!",
-                        description=reward_message,
+                        description=f"{random.choice(self.boss_dialogues['defeat'])}\n{reward_message}",
                         color=discord.Color.green()
                     )
                     await ctx.send(embed=embed)
@@ -93,7 +117,8 @@ class BossCog(commands.Cog):
                     if await self.attempt_boss_escape():
                         embed = discord.Embed(
                             title="🏃‍♂️ O Boss Fugiu!",
-                            description=f"O {self.current_boss['name']} conseguiu escapar! Você não ganhou nenhuma recompensa.",
+                            description=f"{random.choice(self.boss_dialogues['escape'])}\n"
+                                        "Você não ganhou nenhuma recompensa.",
                             color=discord.Color.yellow()
                         )
                         await ctx.send(embed=embed)
