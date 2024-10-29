@@ -11,7 +11,9 @@ class BossCog(commands.Cog):
         self.current_boss = None  # Inicialmente, sem boss ativo
         self.cooldown_time = 3600  # 1 hora de cooldown por usuário
         self.last_attack_time = {}
-        self.snipers = ["🔫 SNIPER BOSS RARA", "🔥 SNIPER EMBERIUM", "💎 SNIPER DAMANTY"]
+        self.damage_dealt = defaultdict(int)  # Armazena o dano causado por cada jogador
+        self.kills = defaultdict(int)  # Armazena o número de kills por jogador
+        self.snipers_won = defaultdict(int)  # Armazena o número de snipers ganhas por jogador
 
         # URLs das imagens dos bosses
         self.boss_images = {
@@ -68,24 +70,33 @@ class BossCog(commands.Cog):
             ]
         }
 
-        # Dicionário para armazenar o dano de cada jogador
-        self.damage_dealt = defaultdict(int)
-        self.kills = defaultdict(int)  # Contador de kills
-        self.snipers_won = defaultdict(int)  # Contador de snipers ganhas
-        self.damage_roles = [1300850877585690655, 1300852310171324566, 1300852691970428958]  # IDs dos cargos por dano
-        self.kill_roles = [1300853285858578543, 1300853676784484484, 1300854136648241235]  # IDs dos cargos por kill
-        self.sniper_roles = [1300854639658270761, 1300854891350327438, 1300855252928434288]  # IDs dos cargos por sniper
+        # IDs dos cargos por desempenho
+        self.damage_roles = [1300850877585690655, 1300852310171324566, 1300852691970428958]  # Cargos de dano
+        self.kill_roles = [1300853285858578543, 1300853676784484484, 1300854136648241235]  # Cargos de kills
+        self.sniper_roles = [1300854639658270761, 1300854891350327438, 1300855252928434288]  # Cargos de snipers
 
     async def attempt_boss_escape(self):
         """Verifica se o boss consegue fugir."""
         escape_chance = random.randint(1, 100)
         return escape_chance <= 15  # 15% de chance de fuga
 
+    def generate_sniper_drop(self):
+        """Define uma premiação rara."""
+        drop_chance = random.randint(1, 1000)  # Tornar o drop muito raro
+        if drop_chance <= 2:  # Chance de 0,2% de dropar sniper rara
+            selected_sniper = random.choice(self.snipers)
+            destroy_chance = random.randint(1, 100)
+            if destroy_chance <= 30:  # 30% de chance do boss quebrar o prêmio
+                return f"😖 O boss quebrou a {selected_sniper}!"
+            else:
+                return f"🎉 Parabéns! Você ganhou uma {selected_sniper}!"
+        return "😢 O boss não deixou nenhuma sniper desta vez."
+
     @commands.command(name="boss")
     async def boss_attack(self, ctx):
         """Permite atacar o boss e, se derrotado, concede uma premiação."""
         user_id = ctx.author.id
-        display_name = f"<@{ctx.author.id}>"
+        display_name = f"<@{ctx.author.id}>"  # Menciona o usuário
 
         if not self.current_boss:
             # Invocar o boss
@@ -97,22 +108,28 @@ class BossCog(commands.Cog):
                             "Todos devem atacá-lo para derrotá-lo!",
                 color=discord.Color.red()
             )
+            embed.set_image(url=self.boss_images[self.current_boss['name']]["default"])
             await ctx.send(embed=embed)
         else:
-            # Atacar o boss
+            # Lógica para atacar o boss
             if user_id not in self.last_attack_time or (ctx.message.created_at.timestamp() - self.last_attack_time[user_id]) >= self.cooldown_time:
                 damage = random.randint(50, 200)
                 self.current_boss["hp"] -= damage
-                self.damage_dealt[user_id] += damage  # Armazena o dano causado pelo jogador
                 self.last_attack_time[user_id] = ctx.message.created_at.timestamp()
+
+                # Registra dano
+                self.damage_dealt[user_id] += damage
+
                 embed = discord.Embed(
                     title="🎯 Ataque no Boss!",
                     description=f"{display_name} atacou o {self.current_boss['name']} causando {damage} de dano!\n"
                                 f"HP restante do boss: {self.current_boss['hp']}",
                     color=discord.Color.orange()
                 )
+                embed.set_image(url=self.boss_images[self.current_boss['name']]["attack"])
                 await ctx.send(embed=embed)
 
+                # Verifica se o boss foi derrotado
                 if self.current_boss["hp"] <= 0:
                     self.kills[user_id] += 1  # Incrementa o contador de kills
                     reward_message = self.generate_sniper_drop()
@@ -121,6 +138,7 @@ class BossCog(commands.Cog):
                         description=f"{random.choice(self.boss_dialogues['defeat'])}\n{reward_message}",
                         color=discord.Color.green()
                     )
+                    embed.set_image(url=self.boss_images[self.current_boss['name']]["defeated"])
                     await ctx.send(embed=embed)
 
                     # Atualiza os cargos de acordo com o desempenho
@@ -133,6 +151,7 @@ class BossCog(commands.Cog):
                                     "Você não ganhou nenhuma recompensa.",
                         color=discord.Color.yellow()
                     )
+                    embed.set_image(url=self.boss_images[self.current_boss['name']]["flee"])
                     await ctx.send(embed=embed)
                     self.current_boss = None  # Reseta o boss
             else:
@@ -147,29 +166,31 @@ class BossCog(commands.Cog):
 
     async def update_roles(self, user_id):
         """Atualiza os cargos com base no dano causado e nas kills."""
-        # Atualiza os cargos por dano
+        guild = self.bot.guilds[0]  # Assume o primeiro servidor do bot
+
+        # Atualiza cargos por dano
         sorted_damage = sorted(self.damage_dealt.items(), key=lambda x: x[1], reverse=True)[:3]
         for index, (uid, damage) in enumerate(sorted_damage):
             if uid == user_id:
-                role = self.bot.get_guild(YOUR_GUILD_ID).get_role(self.damage_roles[index])  # Cargo de dano
-                await self.bot.get_user(uid).add_roles(role)
-                await self.bot.get_user(uid).send(f"🎖️ Você ganhou o cargo de {role.name} por causar mais dano!")
+                role = guild.get_role(self.damage_roles[index])  # Cargos de dano
+                await guild.get_member(uid).add_roles(role)
+                await guild.get_member(uid).send(f"🎖️ Você ganhou o cargo de {role.name} por causar mais dano!")
 
-        # Atualiza os cargos por kills
+        # Atualiza cargos por kills
         sorted_kills = sorted(self.kills.items(), key=lambda x: x[1], reverse=True)[:3]
         for index, (uid, kills) in enumerate(sorted_kills):
             if uid == user_id:
-                role = self.bot.get_guild(YOUR_GUILD_ID).get_role(self.kill_roles[index])  # Cargo de kills
-                await self.bot.get_user(uid).add_roles(role)
-                await self.bot.get_user(uid).send(f"🎖️ Você ganhou o cargo de {role.name} por derrotar mais bosses!")
+                role = guild.get_role(self.kill_roles[index])  # Cargos de kills
+                await guild.get_member(uid).add_roles(role)
+                await guild.get_member(uid).send(f"🎖️ Você ganhou o cargo de {role.name} por derrotar mais bosses!")
 
-        # Atualiza os cargos por snipers
+        # Atualiza cargos por snipers
         sorted_snipers = sorted(self.snipers_won.items(), key=lambda x: x[1], reverse=True)[:3]
         for index, (uid, snipers) in enumerate(sorted_snipers):
             if uid == user_id:
-                role = self.bot.get_guild(YOUR_GUILD_ID).get_role(self.sniper_roles[index])  # Cargo de snipers
-                await self.bot.get_user(uid).add_roles(role)
-                await self.bot.get_user(uid).send(f"🎖️ Você ganhou o cargo de {role.name} por ganhar mais snipers!")
+                role = guild.get_role(self.sniper_roles[index])  # Cargos de snipers
+                await guild.get_member(uid).add_roles(role)
+                await guild.get_member(uid).send(f"🎖️ Você ganhou o cargo de {role.name} por ganhar mais snipers!")
 
 # Função de setup para adicionar o cog ao bot
 async def setup(bot):
