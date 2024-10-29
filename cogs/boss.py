@@ -12,10 +12,9 @@ class BossCog(commands.Cog):
         self.current_event = None
         self.horda_infinita_active = False
         self.panico_geral_active = False
-
-        # Iniciar as tarefas
         self.boss_attack_task.start()
         self.rank_update.start()
+        self.change_status.start()
         self.daily_mission_task.start()
         
         # Configuração de bosses
@@ -67,11 +66,12 @@ class BossCog(commands.Cog):
             "antiviral": "💊 Remédio Antiviral",
             "soro": "💉 Soro de Força"
         }
-        self.status_channel_id = 1186636197934661632  # Substitua pelo ID correto
-        self.commands_channel_id = 1299092242673303552  # Substitua pelo ID correto
-        self.exempt_role_id = 1296631135442309160  # Substitua pelo ID correto
+        self.status_channel_id = 1186636197934661632
+        self.commands_channel_id = 1299092242673303552
+        self.exempt_role_id = 1296631135442309160  # Cargo com permissão de ignorar cooldown
         self.minions = ["Minion 1 🧟", "Minion 2 🧟", "Minion 3 🧟"]
-
+        self.boss_phases = ["fase_one", "fase_two", "fase_three"]
+        
         # Configuração da Loja Ember
         self.shop_ember_items = {
             "armadura_de_zumbi": {
@@ -98,12 +98,7 @@ class BossCog(commands.Cog):
         
         # Configuração de Missões Diárias
         self.daily_mission = {}
-
-        # Configuração dos IDs dos Cargos de Sniper
-        self.sniper_adamanty_role_id = <ROLE_ID_Sniper_Adamanty>    # Substitua pelo ID real
-        self.sniper_emberium_role_id = <ROLE_ID_Sniper_Emberium>    # Substitua pelo ID real
-        self.sniper_boss_role_id = <ROLE_ID_Sniper_Boss>            # Substitua pelo ID real
-
+        
     async def ensure_player(self, user_id):
         """Garante que o usuário tenha uma entrada na tabela 'players'."""
         async with self.bot.pool.acquire() as connection:
@@ -304,6 +299,774 @@ class BossCog(commands.Cog):
         embed.add_field(name="!boss daily_mission", value="Participa da missão diária para ganhar Ember.", inline=False)
         embed.add_field(name="!boss event", value="Inicia um evento especial apocalíptico.", inline=False)
         await ctx.send(embed=embed)
+
+    # Comandos da Loja Ember
+
+    @boss.command(name="shop_ember")
+    async def boss_shop_ember(self, ctx):
+        """Exibe os itens disponíveis para compra com Ember."""
+        embed = discord.Embed(
+            title="🛒 Loja de Ember",
+            description="Aqui você pode comprar itens exclusivos usando Ember.",
+            color=discord.Color.blue()
+        )
+        
+        for item_key, item in self.shop_ember_items.items():
+            embed.add_field(
+                name=item['name'],
+                value=f"Custo: {item['price']} Ember\n{item['description']}",
+                inline=False
+            )
+        
+        await ctx.send(embed=embed)
+
+    @boss.command(name="buy_ember")
+    async def boss_buy_ember(self, ctx, *, item_key: str = None):
+        """Permite que o jogador compre um item da loja usando Ember."""
+        if not item_key:
+            await ctx.send("⚠️ Por favor, especifique o item que deseja comprar. Exemplo: `!boss buy_ember armadura_de_zumbi`")
+            return
+        
+        item_key = item_key.lower()
+        
+        if item_key not in self.shop_ember_items:
+            await ctx.send("⚠️ Item não encontrado na loja de Ember. Use `!boss shop_ember` para ver os itens disponíveis.")
+            return
+        
+        item = self.shop_ember_items[item_key]
+        user_id = ctx.author.id
+        
+        # Garantir que o jogador exista no banco de dados
+        await self.ensure_player(user_id)
+        
+        async with self.bot.pool.acquire() as connection:
+            # Obter o saldo atual de Ember do jogador
+            result = await connection.fetchrow("SELECT ember FROM players WHERE user_id = $1", user_id)
+            current_ember = result['ember'] if result else 0
+            
+            if current_ember < item['price']:
+                await ctx.send("⚠️ Você não tem Ember suficiente para comprar este item.")
+                return
+            
+            # Deduzir o preço do item do saldo de Ember do jogador
+            await connection.execute(
+                "UPDATE players SET ember = ember - $1 WHERE user_id = $2",
+                item['price'], user_id
+            )
+            
+            # Adicionar o item ao inventário do jogador
+            await self.add_item_to_inventory(user_id, item['name'])
+            
+        embed = discord.Embed(
+            title="🛍️ Compra Realizada!",
+            description=f"Você comprou **{item['name']}** por {item['price']} Ember.",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+
+    @boss.command(name="balance")
+    async def boss_balance(self, ctx):
+        """Exibe o saldo atual do jogador."""
+        user_id = ctx.author.id
+        await self.ensure_player(user_id)
+        
+        async with self.bot.pool.acquire() as connection:
+            result = await connection.fetchrow("SELECT money FROM players WHERE user_id = $1", user_id)
+            current_money = result['money'] if result else 0
+        
+        embed = discord.Embed(
+            title=f"💰 Saldo de {ctx.author.display_name}",
+            description=f"Você possui **{current_money}** 💰.",
+            color=discord.Color.gold()
+        )
+        await ctx.send(embed=embed)
+
+    @boss.command(name="balance_ember")
+    async def boss_balance_ember(self, ctx):
+        """Exibe o saldo atual de Ember do jogador."""
+        user_id = ctx.author.id
+        await self.ensure_player(user_id)
+        
+        async with self.bot.pool.acquire() as connection:
+            result = await connection.fetchrow("SELECT ember FROM players WHERE user_id = $1", user_id)
+            current_ember = result['ember'] if result else 0
+        
+        embed = discord.Embed(
+            title=f"🔥 Saldo de Ember de {ctx.author.display_name}",
+            description=f"Você possui **{current_ember}** Ember.",
+            color=discord.Color.gold()
+        )
+        await ctx.send(embed=embed)
+
+    @boss.command(name="daily_mission")
+    async def boss_daily_mission(self, ctx):
+        """Permite que o jogador participe da missão diária para ganhar Ember."""
+        user_id = ctx.author.id
+        await self.ensure_player(user_id)
+        
+        today = time.strftime("%Y-%m-%d")
+        
+        if self.daily_mission.get(user_id) == today:
+            await ctx.send("⚠️ Você já completou a missão diária hoje. Tente novamente amanhã!")
+            return
+        
+        # Definir a missão (exemplo: matar 10 minions)
+        mission_goal = 10
+        mission_reward = 500  # Ember
+        
+        # Simulação da missão (em um cenário real, você implementaria lógica de acompanhamento)
+        # Aqui, automaticamente completamos a missão
+        await self.award_ember(user_id, mission_reward)
+        self.daily_mission[user_id] = today
+        
+        embed = discord.Embed(
+            title="🎯 Missão Diária Completa!",
+            description=f"Você completou a missão diária e ganhou **{mission_reward}** Ember!",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+
+    @boss.command(name="event")
+    async def boss_event(self, ctx):
+        """Inicia um evento especial apocalíptico."""
+        if self.current_event:
+            await ctx.send("⚠️ Já há um evento ativo no momento.")
+            return
+        
+        # Definir um evento aleatório
+        events = [
+            {
+                "name": "Tempestade Zumbi 🌪️",
+                "description": "Uma tempestade zumbi está se aproximando! Aumente sua defesa temporariamente.",
+                "effect": self.activate_tempestade_zumbi
+            },
+            {
+                "name": "Horda Infinita 🧟‍♂️",
+                "description": "Uma horda infinita de zumbis está atacando! Ganhe mais XP por ataques ao boss.",
+                "effect": self.activate_horda_infinita
+            },
+            {
+                "name": "Pânico Geral 😱",
+                "description": "O pânico se espalha! Todos os jogadores têm uma chance maior de infecção.",
+                "effect": self.activate_panico_geral
+            }
+        ]
+        event = random.choice(events)
+        self.current_event = event
+        embed = discord.Embed(
+            title=f"✨ Evento Especial: {event['name']}",
+            description=event['description'],
+            color=discord.Color.dark_purple()
+        )
+        await ctx.send(embed=embed)
+        
+        # Ativar o efeito do evento
+        await event['effect']()
+
+    async def activate_tempestade_zumbi(self):
+        """Aumenta a defesa de todos os jogadores por um período."""
+        channel = self.bot.get_channel(self.status_channel_id)
+        if channel is None:
+            print(f"Canal com ID {self.status_channel_id} não encontrado.")
+            return
+
+        embed = discord.Embed(
+            title="🌪️ Tempestade Zumbi Ativada!",
+            description="Aumente sua defesa em 20% por 30 minutos.",
+            color=discord.Color.blue()
+        )
+        await channel.send(embed=embed)
+        
+        # Implementar lógica para aumentar a defesa dos jogadores (exemplo: adicionar debuff)
+        # Aqui você pode adicionar flags ou alterar atributos no banco de dados
+
+        # Esperar 30 minutos
+        await asyncio.sleep(1800)
+
+        # Reverter o efeito
+        embed = discord.Embed(
+            title="🌪️ Tempestade Zumbi Terminada!",
+            description="Sua defesa voltou ao normal.",
+            color=discord.Color.blue()
+        )
+        await channel.send(embed=embed)
+        self.current_event = None
+
+    async def activate_horda_infinita(self):
+        """Aumenta o ganho de XP para os jogadores durante um período."""
+        channel = self.bot.get_channel(self.status_channel_id)
+        if channel is None:
+            print(f"Canal com ID {self.status_channel_id} não encontrado.")
+            return
+
+        embed = discord.Embed(
+            title="🧟‍♂️ Horda Infinita Ativada!",
+            description="Ganhe 50% mais XP por ataques ao boss por 1 hora.",
+            color=discord.Color.gold()
+        )
+        await channel.send(embed=embed)
+        
+        # Implementar lógica para aumentar o ganho de XP dos jogadores
+        self.horda_infinita_active = True
+
+        # Esperar 1 hora
+        await asyncio.sleep(3600)
+
+        # Reverter o efeito
+        embed = discord.Embed(
+            title="🧟‍♂️ Horda Infinita Terminada!",
+            description="O ganho de XP voltou ao normal.",
+            color=discord.Color.gold()
+        )
+        await channel.send(embed=embed)
+        self.horda_infinita_active = False
+        self.current_event = None
+
+    async def activate_panico_geral(self):
+        """Aumenta a chance de infecção para todos os jogadores."""
+        channel = self.bot.get_channel(self.status_channel_id)
+        if channel is None:
+            print(f"Canal com ID {self.status_channel_id} não encontrado.")
+            return
+
+        embed = discord.Embed(
+            title="😱 Pânico Geral Ativado!",
+            description="A chance de infecção aumentou em 10% para todos os jogadores por 45 minutos.",
+            color=discord.Color.dark_red()
+        )
+        await channel.send(embed=embed)
+        
+        # Implementar lógica para aumentar a chance de infecção
+        self.panico_geral_active = True
+
+        # Esperar 45 minutos
+        await asyncio.sleep(2700)
+
+        # Reverter o efeito
+        embed = discord.Embed(
+            title="😱 Pânico Geral Terminada!",
+            description="A chance de infecção voltou ao normal.",
+            color=discord.Color.dark_red()
+        )
+        await channel.send(embed=embed)
+        self.panico_geral_active = False
+        self.current_event = None
+
+    # Comandos da Loja Ember
+
+    @boss.command(name="shop_ember")
+    async def boss_shop_ember(self, ctx):
+        """Exibe os itens disponíveis para compra com Ember."""
+        embed = discord.Embed(
+            title="🛒 Loja de Ember",
+            description="Aqui você pode comprar itens exclusivos usando Ember.",
+            color=discord.Color.blue()
+        )
+        
+        for item_key, item in self.shop_ember_items.items():
+            embed.add_field(
+                name=item['name'],
+                value=f"Custo: {item['price']} Ember\n{item['description']}",
+                inline=False
+            )
+        
+        await ctx.send(embed=embed)
+
+    @boss.command(name="buy_ember")
+    async def boss_buy_ember(self, ctx, *, item_key: str = None):
+        """Permite que o jogador compre um item da loja usando Ember."""
+        if not item_key:
+            await ctx.send("⚠️ Por favor, especifique o item que deseja comprar. Exemplo: `!boss buy_ember armadura_de_zumbi`")
+            return
+        
+        item_key = item_key.lower()
+        
+        if item_key not in self.shop_ember_items:
+            await ctx.send("⚠️ Item não encontrado na loja de Ember. Use `!boss shop_ember` para ver os itens disponíveis.")
+            return
+        
+        item = self.shop_ember_items[item_key]
+        user_id = ctx.author.id
+        
+        # Garantir que o jogador exista no banco de dados
+        await self.ensure_player(user_id)
+        
+        async with self.bot.pool.acquire() as connection:
+            # Obter o saldo atual de Ember do jogador
+            result = await connection.fetchrow("SELECT ember FROM players WHERE user_id = $1", user_id)
+            current_ember = result['ember'] if result else 0
+            
+            if current_ember < item['price']:
+                await ctx.send("⚠️ Você não tem Ember suficiente para comprar este item.")
+                return
+            
+            # Deduzir o preço do item do saldo de Ember do jogador
+            await connection.execute(
+                "UPDATE players SET ember = ember - $1 WHERE user_id = $2",
+                item['price'], user_id
+            )
+            
+            # Adicionar o item ao inventário do jogador
+            await self.add_item_to_inventory(user_id, item['name'])
+            
+        embed = discord.Embed(
+            title="🛍️ Compra Realizada!",
+            description=f"Você comprou **{item['name']}** por {item['price']} Ember.",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+
+    # Comandos de Saldo
+
+    @boss.command(name="balance")
+    async def boss_balance(self, ctx):
+        """Exibe o saldo atual de dinheiro do jogador."""
+        user_id = ctx.author.id
+        await self.ensure_player(user_id)
+        
+        async with self.bot.pool.acquire() as connection:
+            result = await connection.fetchrow("SELECT money FROM players WHERE user_id = $1", user_id)
+            current_money = result['money'] if result else 0
+        
+        embed = discord.Embed(
+            title=f"💰 Saldo de {ctx.author.display_name}",
+            description=f"Você possui **{current_money}** 💰.",
+            color=discord.Color.gold()
+        )
+        await ctx.send(embed=embed)
+
+    @boss.command(name="balance_ember")
+    async def boss_balance_ember(self, ctx):
+        """Exibe o saldo atual de Ember do jogador."""
+        user_id = ctx.author.id
+        await self.ensure_player(user_id)
+        
+        async with self.bot.pool.acquire() as connection:
+            result = await connection.fetchrow("SELECT ember FROM players WHERE user_id = $1", user_id)
+            current_ember = result['ember'] if result else 0
+        
+        embed = discord.Embed(
+            title=f"🔥 Saldo de Ember de {ctx.author.display_name}",
+            description=f"Você possui **{current_ember}** Ember.",
+            color=discord.Color.gold()
+        )
+        await ctx.send(embed=embed)
+
+    # Missão Diária
+
+    @boss.command(name="daily_mission")
+    async def boss_daily_mission(self, ctx):
+        """Permite que o jogador participe da missão diária para ganhar Ember."""
+        user_id = ctx.author.id
+        await self.ensure_player(user_id)
+        
+        today = time.strftime("%Y-%m-%d")
+        
+        if self.daily_mission.get(user_id) == today:
+            await ctx.send("⚠️ Você já completou a missão diária hoje. Tente novamente amanhã!")
+            return
+        
+        # Definir a missão (exemplo: matar 10 minions)
+        mission_goal = 10
+        mission_reward = 500  # Ember
+        
+        # Simulação da missão (em um cenário real, você implementaria lógica de acompanhamento)
+        # Aqui, automaticamente completamos a missão
+        await self.award_ember(user_id, mission_reward)
+        self.daily_mission[user_id] = today
+        
+        embed = discord.Embed(
+            title="🎯 Missão Diária Completa!",
+            description=f"Você completou a missão diária e ganhou **{mission_reward}** Ember!",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+
+    # Evento Especial
+
+    @boss.command(name="event")
+    async def boss_event(self, ctx):
+        """Inicia um evento especial apocalíptico."""
+        if self.current_event:
+            await ctx.send("⚠️ Já há um evento ativo no momento.")
+            return
+        
+        # Definir um evento aleatório
+        events = [
+            {
+                "name": "Tempestade Zumbi 🌪️",
+                "description": "Uma tempestade zumbi está se aproximando! Aumente sua defesa temporariamente.",
+                "effect": self.activate_tempestade_zumbi
+            },
+            {
+                "name": "Horda Infinita 🧟‍♂️",
+                "description": "Uma horda infinita de zumbis está atacando! Ganhe mais XP por ataques ao boss.",
+                "effect": self.activate_horda_infinita
+            },
+            {
+                "name": "Pânico Geral 😱",
+                "description": "O pânico se espalha! Todos os jogadores têm uma chance maior de infecção.",
+                "effect": self.activate_panico_geral
+            }
+        ]
+        event = random.choice(events)
+        self.current_event = event
+        embed = discord.Embed(
+            title=f"✨ Evento Especial: {event['name']}",
+            description=event['description'],
+            color=discord.Color.dark_purple()
+        )
+        await ctx.send(embed=embed)
+        
+        # Ativar o efeito do evento
+        await event['effect']()
+
+    async def activate_tempestade_zumbi(self):
+        """Aumenta a defesa de todos os jogadores por um período."""
+        channel = self.bot.get_channel(self.status_channel_id)
+        if channel is None:
+            print(f"Canal com ID {self.status_channel_id} não encontrado.")
+            return
+
+        embed = discord.Embed(
+            title="🌪️ Tempestade Zumbi Ativada!",
+            description="Aumente sua defesa em 20% por 30 minutos.",
+            color=discord.Color.blue()
+        )
+        await channel.send(embed=embed)
+        
+        # Implementar lógica para aumentar a defesa dos jogadores (exemplo: adicionar debuff)
+        # Aqui você pode adicionar flags ou alterar atributos no banco de dados
+
+        # Esperar 30 minutos
+        await asyncio.sleep(1800)
+
+        # Reverter o efeito
+        embed = discord.Embed(
+            title="🌪️ Tempestade Zumbi Terminada!",
+            description="Sua defesa voltou ao normal.",
+            color=discord.Color.blue()
+        )
+        await channel.send(embed=embed)
+        self.current_event = None
+
+    async def activate_horda_infinita(self):
+        """Aumenta o ganho de XP para os jogadores durante um período."""
+        channel = self.bot.get_channel(self.status_channel_id)
+        if channel is None:
+            print(f"Canal com ID {self.status_channel_id} não encontrado.")
+            return
+
+        embed = discord.Embed(
+            title="🧟‍♂️ Horda Infinita Ativada!",
+            description="Ganhe 50% mais XP por ataques ao boss por 1 hora.",
+            color=discord.Color.gold()
+        )
+        await channel.send(embed=embed)
+        
+        # Implementar lógica para aumentar o ganho de XP dos jogadores
+        self.horda_infinita_active = True
+
+        # Esperar 1 hora
+        await asyncio.sleep(3600)
+
+        # Reverter o efeito
+        embed = discord.Embed(
+            title="🧟‍♂️ Horda Infinita Terminada!",
+            description="O ganho de XP voltou ao normal.",
+            color=discord.Color.gold()
+        )
+        await channel.send(embed=embed)
+        self.horda_infinita_active = False
+        self.current_event = None
+
+    async def activate_panico_geral(self):
+        """Aumenta a chance de infecção para todos os jogadores."""
+        channel = self.bot.get_channel(self.status_channel_id)
+        if channel is None:
+            print(f"Canal com ID {self.status_channel_id} não encontrado.")
+            return
+
+        embed = discord.Embed(
+            title="😱 Pânico Geral Ativado!",
+            description="A chance de infecção aumentou em 10% para todos os jogadores por 45 minutos.",
+            color=discord.Color.dark_red()
+        )
+        await channel.send(embed=embed)
+        
+        # Implementar lógica para aumentar a chance de infecção
+        self.panico_geral_active = True
+
+        # Esperar 45 minutos
+        await asyncio.sleep(2700)
+
+        # Reverter o efeito
+        embed = discord.Embed(
+            title="😱 Pânico Geral Terminada!",
+            description="A chance de infecção voltou ao normal.",
+            color=discord.Color.dark_red()
+        )
+        await channel.send(embed=embed)
+        self.panico_geral_active = False
+        self.current_event = None
+
+    # Comandos da Loja Ember
+
+    @boss.command(name="shop_ember")
+    async def boss_shop_ember(self, ctx):
+        """Exibe os itens disponíveis para compra com Ember."""
+        embed = discord.Embed(
+            title="🛒 Loja de Ember",
+            description="Aqui você pode comprar itens exclusivos usando Ember.",
+            color=discord.Color.blue()
+        )
+        
+        for item_key, item in self.shop_ember_items.items():
+            embed.add_field(
+                name=item['name'],
+                value=f"Custo: {item['price']} Ember\n{item['description']}",
+                inline=False
+            )
+        
+        await ctx.send(embed=embed)
+
+    @boss.command(name="buy_ember")
+    async def boss_buy_ember(self, ctx, *, item_key: str = None):
+        """Permite que o jogador compre um item da loja usando Ember."""
+        if not item_key:
+            await ctx.send("⚠️ Por favor, especifique o item que deseja comprar. Exemplo: `!boss buy_ember armadura_de_zumbi`")
+            return
+        
+        item_key = item_key.lower()
+        
+        if item_key not in self.shop_ember_items:
+            await ctx.send("⚠️ Item não encontrado na loja de Ember. Use `!boss shop_ember` para ver os itens disponíveis.")
+            return
+        
+        item = self.shop_ember_items[item_key]
+        user_id = ctx.author.id
+        
+        # Garantir que o jogador exista no banco de dados
+        await self.ensure_player(user_id)
+        
+        async with self.bot.pool.acquire() as connection:
+            # Obter o saldo atual de Ember do jogador
+            result = await connection.fetchrow("SELECT ember FROM players WHERE user_id = $1", user_id)
+            current_ember = result['ember'] if result else 0
+            
+            if current_ember < item['price']:
+                await ctx.send("⚠️ Você não tem Ember suficiente para comprar este item.")
+                return
+            
+            # Deduzir o preço do item do saldo de Ember do jogador
+            await connection.execute(
+                "UPDATE players SET ember = ember - $1 WHERE user_id = $2",
+                item['price'], user_id
+            )
+            
+            # Adicionar o item ao inventário do jogador
+            await self.add_item_to_inventory(user_id, item['name'])
+            
+        embed = discord.Embed(
+            title="🛍️ Compra Realizada!",
+            description=f"Você comprou **{item['name']}** por {item['price']} Ember.",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+
+    # Comandos de Saldo
+
+    @boss.command(name="balance")
+    async def boss_balance(self, ctx):
+        """Exibe o saldo atual de dinheiro do jogador."""
+        user_id = ctx.author.id
+        await self.ensure_player(user_id)
+        
+        async with self.bot.pool.acquire() as connection:
+            result = await connection.fetchrow("SELECT money FROM players WHERE user_id = $1", user_id)
+            current_money = result['money'] if result else 0
+        
+        embed = discord.Embed(
+            title=f"💰 Saldo de {ctx.author.display_name}",
+            description=f"Você possui **{current_money}** 💰.",
+            color=discord.Color.gold()
+        )
+        await ctx.send(embed=embed)
+
+    @boss.command(name="balance_ember")
+    async def boss_balance_ember(self, ctx):
+        """Exibe o saldo atual de Ember do jogador."""
+        user_id = ctx.author.id
+        await self.ensure_player(user_id)
+        
+        async with self.bot.pool.acquire() as connection:
+            result = await connection.fetchrow("SELECT ember FROM players WHERE user_id = $1", user_id)
+            current_ember = result['ember'] if result else 0
+        
+        embed = discord.Embed(
+            title=f"🔥 Saldo de Ember de {ctx.author.display_name}",
+            description=f"Você possui **{current_ember}** Ember.",
+            color=discord.Color.gold()
+        )
+        await ctx.send(embed=embed)
+
+    # Missão Diária
+
+    @boss.command(name="daily_mission")
+    async def boss_daily_mission(self, ctx):
+        """Permite que o jogador participe da missão diária para ganhar Ember."""
+        user_id = ctx.author.id
+        await self.ensure_player(user_id)
+        
+        today = time.strftime("%Y-%m-%d")
+        
+        if self.daily_mission.get(user_id) == today:
+            await ctx.send("⚠️ Você já completou a missão diária hoje. Tente novamente amanhã!")
+            return
+        
+        # Definir a missão (exemplo: matar 10 minions)
+        mission_goal = 10
+        mission_reward = 500  # Ember
+        
+        # Simulação da missão (em um cenário real, você implementaria lógica de acompanhamento)
+        # Aqui, automaticamente completamos a missão
+        await self.award_ember(user_id, mission_reward)
+        self.daily_mission[user_id] = today
+        
+        embed = discord.Embed(
+            title="🎯 Missão Diária Completa!",
+            description=f"Você completou a missão diária e ganhou **{mission_reward}** Ember!",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+
+    # Evento Especial
+
+    @boss.command(name="event")
+    async def boss_event(self, ctx):
+        """Inicia um evento especial apocalíptico."""
+        if self.current_event:
+            await ctx.send("⚠️ Já há um evento ativo no momento.")
+            return
+        
+        # Definir um evento aleatório
+        events = [
+            {
+                "name": "Tempestade Zumbi 🌪️",
+                "description": "Uma tempestade zumbi está se aproximando! Aumente sua defesa temporariamente.",
+                "effect": self.activate_tempestade_zumbi
+            },
+            {
+                "name": "Horda Infinita 🧟‍♂️",
+                "description": "Uma horda infinita de zumbis está atacando! Ganhe mais XP por ataques ao boss.",
+                "effect": self.activate_horda_infinita
+            },
+            {
+                "name": "Pânico Geral 😱",
+                "description": "O pânico se espalha! Todos os jogadores têm uma chance maior de infecção.",
+                "effect": self.activate_panico_geral
+            }
+        ]
+        event = random.choice(events)
+        self.current_event = event
+        embed = discord.Embed(
+            title=f"✨ Evento Especial: {event['name']}",
+            description=event['description'],
+            color=discord.Color.dark_purple()
+        )
+        await ctx.send(embed=embed)
+        
+        # Ativar o efeito do evento
+        await event['effect']()
+
+    async def activate_tempestade_zumbi(self):
+        """Aumenta a defesa de todos os jogadores por um período."""
+        channel = self.bot.get_channel(self.status_channel_id)
+        if channel is None:
+            print(f"Canal com ID {self.status_channel_id} não encontrado.")
+            return
+
+        embed = discord.Embed(
+            title="🌪️ Tempestade Zumbi Ativada!",
+            description="Aumente sua defesa em 20% por 30 minutos.",
+            color=discord.Color.blue()
+        )
+        await channel.send(embed=embed)
+        
+        # Implementar lógica para aumentar a defesa dos jogadores (exemplo: adicionar debuff)
+        # Aqui você pode adicionar flags ou alterar atributos no banco de dados
+
+        # Esperar 30 minutos
+        await asyncio.sleep(1800)
+
+        # Reverter o efeito
+        embed = discord.Embed(
+            title="🌪️ Tempestade Zumbi Terminada!",
+            description="Sua defesa voltou ao normal.",
+            color=discord.Color.blue()
+        )
+        await channel.send(embed=embed)
+        self.current_event = None
+
+    async def activate_horda_infinita(self):
+        """Aumenta o ganho de XP para os jogadores durante um período."""
+        channel = self.bot.get_channel(self.status_channel_id)
+        if channel is None:
+            print(f"Canal com ID {self.status_channel_id} não encontrado.")
+            return
+
+        embed = discord.Embed(
+            title="🧟‍♂️ Horda Infinita Ativada!",
+            description="Ganhe 50% mais XP por ataques ao boss por 1 hora.",
+            color=discord.Color.gold()
+        )
+        await channel.send(embed=embed)
+        
+        # Implementar lógica para aumentar o ganho de XP dos jogadores
+        self.horda_infinita_active = True
+
+        # Esperar 1 hora
+        await asyncio.sleep(3600)
+
+        # Reverter o efeito
+        embed = discord.Embed(
+            title="🧟‍♂️ Horda Infinita Terminada!",
+            description="O ganho de XP voltou ao normal.",
+            color=discord.Color.gold()
+        )
+        await channel.send(embed=embed)
+        self.horda_infinita_active = False
+        self.current_event = None
+
+    async def activate_panico_geral(self):
+        """Aumenta a chance de infecção para todos os jogadores."""
+        channel = self.bot.get_channel(self.status_channel_id)
+        if channel is None:
+            print(f"Canal com ID {self.status_channel_id} não encontrado.")
+            return
+
+        embed = discord.Embed(
+            title="😱 Pânico Geral Ativado!",
+            description="A chance de infecção aumentou em 10% para todos os jogadores por 45 minutos.",
+            color=discord.Color.dark_red()
+        )
+        await channel.send(embed=embed)
+        
+        # Implementar lógica para aumentar a chance de infecção
+        self.panico_geral_active = True
+
+        # Esperar 45 minutos
+        await asyncio.sleep(2700)
+
+        # Reverter o efeito
+        embed = discord.Embed(
+            title="😱 Pânico Geral Terminada!",
+            description="A chance de infecção voltou ao normal.",
+            color=discord.Color.dark_red()
+        )
+        await channel.send(embed=embed)
+        self.panico_geral_active = False
+        self.current_event = None
 
     # Comandos da Loja Ember
 
@@ -593,9 +1356,6 @@ class BossCog(commands.Cog):
         await self.add_money_to_player(user_id, reward_money)
         await self.award_ember(user_id, reward_ember)
         
-        # Sistema de Drop de Snipers
-        await self.sniper_drop(ctx, user_id)
-
         embed = discord.Embed(
             title="🏆 Boss Derrotado!",
             description=f"O boss **{self.current_boss['name']}** foi vencido!\nRecompensas: **{reward_item}** 🎁, **{reward_money}** 💰 e **{reward_ember}** Ember 🔥",
@@ -935,7 +1695,7 @@ class BossCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        """Evento que é chamado quando o cog está pronto."""
+        """Evento que é chamado quando o bot está pronto."""
         print(f"Cog '{self.__class__.__name__}' está pronto!")
 
     # Setup do Cog
@@ -943,95 +1703,6 @@ class BossCog(commands.Cog):
     async def setup(self, bot):
         """Configurações iniciais do cog."""
         await bot.add_cog(BossCog(bot))
-
-    # Sistema de Drop de Snipers
-
-    async def sniper_drop(self, ctx, user_id):
-        """Sistema de drop para Snipers ao derrotar o boss."""
-        drop_chance = random.randint(1, 100)
-        if drop_chance <= 35:  # 35% de chance total de drop
-            # Definir as chances individuais
-            sniper_chance = random.randint(1, 100)
-            if sniper_chance <= 5:  # 5% para Sniper Boss
-                role_id = self.sniper_boss_role_id
-                sniper_name = "Sniper Boss 💣"
-            elif sniper_chance <= 25:  # 20% para Sniper Adamanty
-                role_id = self.sniper_adamanty_role_id
-                sniper_name = "Sniper Adamanty 🔫"
-            else:  # 10% para Sniper Emberium
-                role_id = self.sniper_emberium_role_id
-                sniper_name = "Sniper Emberium 🔥"
-            
-            # Obter o membro
-            member = ctx.guild.get_member(user_id)
-            if member:
-                role = ctx.guild.get_role(role_id)
-                if role:
-                    if role in member.roles:
-                        await ctx.send(f"🔔 **{ctx.author.display_name}**, você já possui o cargo **{role.name}**!")
-                    else:
-                        await member.add_roles(role)
-                        embed = discord.Embed(
-                            title="🎁 Drop de Sniper!",
-                            description=f"Parabéns **{ctx.author.display_name}**! Você recebeu o cargo **{role.name}**.",
-                            color=discord.Color.purple()
-                        )
-                        await ctx.send(embed=embed)
-                else:
-                    await ctx.send("⚠️ O cargo de Sniper não foi encontrado. Verifique os IDs configurados.")
-            else:
-                await ctx.send("⚠️ Não foi possível encontrar seu perfil no servidor.")
-
-    # Comando Admin para Roubar o Boss
-
-    @boss.command(name="steal")
-    @commands.has_permissions(administrator=True)
-    async def boss_steal(self, ctx):
-        """Permite que um admin roube o boss ativo e receba uma recompensa."""
-        if not self.current_boss:
-            await ctx.send("⚔️ Não há nenhum boss ativo para ser roubado.")
-            return
-
-        user_id = ctx.author.id
-
-        # Resetar o boss
-        stolen_boss = self.current_boss["name"]
-        self.current_boss = None
-
-        # Recompensa para o admin que roubou
-        reward_money = random.randint(2000, 3000)
-        reward_ember = random.randint(1000, 1500)
-
-        await self.add_money_to_player(user_id, reward_money)
-        await self.award_ember(user_id, reward_ember)
-
-        # Notificação ao admin
-        embed = discord.Embed(
-            title="🚨 Boss Roubado!",
-            description=f"**{ctx.author.display_name}** roubou o boss **{stolen_boss}**!\nRecompensas: **{reward_money}** 💰 e **{reward_ember}** Ember 🔥",
-            color=discord.Color.dark_red()
-        )
-        await ctx.send(embed=embed)
-
-        # Opcional: Mostrar a arma do boss roubado
-        weapon = random.choice(self.weapons)
-        weapon_embed = discord.Embed(
-            title="🔫 Arma do Boss Roubado",
-            description=f"A arma obtida ao roubar o boss é: **{weapon}**",
-            color=discord.Color.gold()
-        )
-        await ctx.send(embed=weapon_embed)
-
-    @boss_steal.error
-    async def boss_steal_error(self, ctx, error):
-        if isinstance(error, commands.MissingPermissions):
-            await ctx.send("⚠️ Você não possui permissão para usar este comando.")
-        else:
-            await ctx.send("⚠️ Ocorreu um erro ao tentar roubar o boss.")
-
-    # Sistema de Drop de Snipers Continua...
-
-    # (O restante do código permanece inalterado)
 
 # Configuração do cog
 async def setup(bot):
