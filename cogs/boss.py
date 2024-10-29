@@ -1,16 +1,18 @@
 import discord
 from discord.ext import commands
 import random
-from rank import RankCog  # Importa o RankCog
 
 class BossCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.rank_cog = RankCog(bot)  # Instância do RankCog
         self.current_boss = None  # Inicialmente, sem boss ativo
         self.cooldown_time = 7200  # Aumentando para 2 horas (7200 segundos)
         self.last_attack_time = {}
         self.snipers = ["🔫 SNIPER BOSS RARA", "🔥 SNIPER EMBERIUM", "💎 SNIPER DAMANTY"]
+
+        # Dados para simular rankings de dano e mortes (substituindo RankCog)
+        self.damage_data = {}  # Armazenamento de dano por jogador
+        self.kills_data = {}  # Armazenamento de mortes por jogador
 
         # URLs das imagens dos bosses
         self.boss_images = {
@@ -67,27 +69,12 @@ class BossCog(commands.Cog):
             {"name": "💀 Gigante Emberium", "hp": 10000, "attack_chance": 50, "damage_range": (80, 250)},
         ]
 
+        # Diálogos dos bosses
         self.boss_dialogues = {
-            "invocation": [
-                "🌍 O mundo está em ruínas, e você ousa me desafiar?!",
-                "🔥 Seu destino é a destruição, mortais!",
-                "👿 A era dos fracos terminou. Prepare-se para o apocalipse!",
-            ],
-            "attack": [
-                "💀 Sua força é insignificante diante de mim!",
-                "⚔️ Cada golpe seu é uma provocação ao meu poder!",
-                "😈 Vocês nunca vencerão. A nova era será minha!",
-            ],
-            "defeat": [
-                "😱 Não pode ser... A era de trevas... foi interrompida!",
-                "🔥 Eu... voltarei... para consumi-los!",
-                "💔 Este não é o fim... Apenas o início do meu retorno!",
-            ],
-            "escape": [
-                "🏃‍♂️ Vocês acham que me prenderão? Eu sou o apocalipse!",
-                "💨 Adeus, mortais! Esta batalha não é o seu fim!",
-                "😈 A nova era ainda não chegou... mas eu voltarei!",
-            ]
+            "invocation": ["🌍 O mundo está em ruínas, e você ousa me desafiar?!"],
+            "attack": ["💀 Sua força é insignificante diante de mim!"],
+            "defeat": ["😱 Não pode ser... A era de trevas... foi interrompida!"],
+            "escape": ["🏃‍♂️ Vocês acham que me prenderão? Eu sou o apocalipse!"]
         }
 
     # Método para conceder cargo ao jogador e remover se necessário
@@ -100,10 +87,24 @@ class BossCog(commands.Cog):
             await user.add_roles(role)
             await ctx.send(f"🎉 {user.mention} agora possui o cargo **{role_name}** por estar entre os melhores! 🏆")
 
+    # Funções substitutas para rank - mantendo funcionalidades originais
+    def record_damage(self, player_id, damage):
+        if player_id not in self.damage_data:
+            self.damage_data[player_id] = 0
+        self.damage_data[player_id] += damage
+
+    def get_top_players_by_damage(self, limit=3):
+        sorted_damage = sorted(self.damage_data.items(), key=lambda x: x[1], reverse=True)
+        return [player_id for player_id, _ in sorted_damage[:limit]]
+
+    def get_top_players_by_kills(self, limit=3):
+        sorted_kills = sorted(self.kills_data.items(), key=lambda x: x[1], reverse=True)
+        return [player_id for player_id, _ in sorted_kills[:limit]]
+
     # Método para atualizar cargos no top 3 em dano e mortes
     async def update_roles(self, ctx):
-        top_damage_players = self.rank_cog.get_top_players_by_damage(limit=3)
-        top_kills_players = self.rank_cog.get_top_players_by_kills(limit=3)
+        top_damage_players = self.get_top_players_by_damage(limit=3)
+        top_kills_players = self.get_top_players_by_kills(limit=3)
 
         for player_id in top_damage_players:
             user = await self.bot.fetch_user(player_id)
@@ -143,8 +144,8 @@ class BossCog(commands.Cog):
                 damage = random.randint(50, 200)
                 self.current_boss["hp"] -= damage
 
-                # Registrar o dano no RankCog
-                self.rank_cog.record_damage(user_id, damage)
+                # Registrar o dano no novo método record_damage
+                self.record_damage(user_id, damage)
 
                 self.last_attack_time[user_id] = ctx.message.created_at.timestamp()
                 embed = discord.Embed(
