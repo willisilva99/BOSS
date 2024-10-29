@@ -172,8 +172,8 @@ class BossCog(commands.Cog):
                     await ctx.send(embed=embed)
 
                     # Atualiza os rankings após derrotar o boss
-                    self.bot.get_cog('RankCog').record_damage(user_id, damage)  # Registra o dano no ranking
-                    self.bot.get_cog('RankCog').record_kill(user_id)  # Registra a kill no ranking
+                    self.rank_cog.record_damage(user_id, damage)  # Registra o dano no ranking
+                    self.rank_cog.record_kill(user_id)  # Registra a kill no ranking
 
                     self.current_boss = None
                 elif await self.attempt_boss_escape():
