@@ -471,7 +471,69 @@ class BossCog(commands.Cog):
     @commands.cooldown(1, 3600, commands.BucketType.user)  # 1 hora de cooldown por usuário
     async def boss_group(self, ctx):
         """Comando principal para interagir com o boss."""
-        # Esse método já está definido acima. Evite duplicações.
+        if ctx.channel.id != self.commands_channel_id:
+            await ctx.send("⚠️ Este comando só pode ser usado no canal designado para combates.")
+            return
+
+        user_id = ctx.author.id
+
+        # Garante que o jogador existe no banco de dados
+        await self.ensure_player(user_id)
+
+        # Verifica se o jogador tem o cargo que ignora o cooldown global
+        has_exempt_role = any(role.id == self.exempt_role_id for role in ctx.author.roles)
+
+        if has_exempt_role:
+            # Executa a lógica sem aplicar o cooldown
+            await self.invocar_boss(ctx, user_id)
+        else:
+            if not self.current_boss:
+                # Invocação do Boss
+                await self.invocar_boss(ctx, user_id)
+            else:
+                # Verifica se o jogador está infectado
+                if await self.is_infected(user_id):
+                    await ctx.send("❌ Você está infectado e não pode atacar o boss. Encontre uma cura primeiro!")
+                    return
+
+                # Ataque ao Boss
+                damage = random.randint(50, 150)
+                if await self.has_damage_debuff(user_id):
+                    damage = int(damage * 0.75)  # Reduz o dano em 25% se o jogador tiver debuff
+                    await ctx.send(f"💀 {ctx.author.display_name} está enfraquecido e causou menos dano!")
+
+                self.current_boss["current_hp"] -= damage
+                await self.award_xp(user_id, 10)  # Sistema de XP ao atacar
+
+                # Recompensa em Ember (opcional)
+                ember_reward = random.randint(50, 100)
+                await self.award_ember(user_id, ember_reward)
+
+                # Mensagem do Ataque com Sarcasmo
+                embed = discord.Embed(
+                    title="💥 Ataque ao Boss",
+                    description=f"{ctx.author.display_name} causou {damage} de dano!\n**HP Restante do Boss:** {self.current_boss['current_hp']}",
+                    color=discord.Color.orange()
+                )
+                # Adicionar tom sarcástico na mensagem
+                sarcasm_phrases = [
+                    f"Bom trabalho, {ctx.author.display_name}! Você quase derrubou o boss...",
+                    f"Wow, {ctx.author.display_name}, isso foi... interessante.",
+                    f"Não sei como o boss resistiu, {ctx.author.display_name}. Foi um esforço heróico!"
+                ]
+                embed.set_footer(text=random.choice(sarcasm_phrases))
+                await ctx.send(embed=embed)
+
+                # Aplica infecção aleatória e penalidade
+                await self.apply_infection(user_id)
+                await self.apply_damage_debuff(user_id)
+
+                # Checa se o boss foi derrotado
+                if self.current_boss["current_hp"] <= 0:
+                    await self.defeat_boss(ctx, user_id)
+                else:
+                    # Atualiza fase do boss se necessário
+                    await self.update_boss_phase()
 
     @boss_group.command(name="notify_admin")
     async def boss_notify_admin(self, ctx):
@@ -539,11 +601,6 @@ class BossCog(commands.Cog):
         # 🔥 **Remover a Sniper do banco de dados após reivindicação**
         async with self.bot.pool.acquire() as connection:
             await connection.execute("DELETE FROM snipers WHERE user_id = $1", user_id)
-
-    @boss_notify_admin.error
-    async def boss_notify_admin_error(self, ctx, error):
-        if isinstance(error, commands.CommandError):
-            await ctx.send("⚠️ Ocorreu um erro ao tentar notificar o administrador.")
 
     @boss_group.command(name="steal_sniper")
     @commands.check(lambda ctx: ctx.author.id == 470628393272999948)  # 🔥 Novo: Restrição ao admin específico
@@ -651,7 +708,7 @@ class BossCog(commands.Cog):
         else:
             await ctx.send("⚠️ Ocorreu um erro ao tentar destruir a Sniper.")
 
-    # 🔥 **Listener para Quando o Cog Está Pronto**
+    # Listener para Quando o Cog Está Pronto
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -660,5 +717,5 @@ class BossCog(commands.Cog):
 
 # Setup do Cog
 
-def setup(bot):
-    bot.add_cog(BossCog(bot))
+async def setup(bot):
+    await bot.add_cog(BossCog(bot))
