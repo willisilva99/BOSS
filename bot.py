@@ -47,81 +47,16 @@ async def setup_database():
         print("Conexão com o banco de dados estabelecida com sucesso.")
 
         async with bot.pool.acquire() as connection:
-            # Criação das tabelas, caso não existam
+            # Criação da tabela de rankings, se não existir
             await connection.execute("""
-                CREATE TABLE IF NOT EXISTS players (
+                CREATE TABLE IF NOT EXISTS player_rankings (
                     user_id BIGINT PRIMARY KEY,
-                    wounds INTEGER DEFAULT 0,
-                    money INTEGER DEFAULT 1000,
-                    ember INTEGER DEFAULT 0,
-                    xp INTEGER DEFAULT 0,
-                    level INTEGER DEFAULT 1,
-                    infected BOOLEAN DEFAULT FALSE,
-                    damage_debuff BOOLEAN DEFAULT FALSE
+                    total_damage INTEGER DEFAULT 0,
+                    kills INTEGER DEFAULT 0,
+                    snipers INTEGER DEFAULT 0
                 );
             """)
-
-            await connection.execute("""
-                CREATE TABLE IF NOT EXISTS inventory (
-                    id SERIAL PRIMARY KEY,
-                    user_id BIGINT REFERENCES players(user_id) ON DELETE CASCADE,
-                    item TEXT NOT NULL
-                );
-            """)
-
-            await connection.execute("""
-                CREATE TABLE IF NOT EXISTS classes (
-                    class_id SERIAL PRIMARY KEY,
-                    name TEXT UNIQUE NOT NULL,
-                    description TEXT
-                );
-            """)
-
-            await connection.execute("""
-                CREATE TABLE IF NOT EXISTS player_classes (
-                    user_id BIGINT REFERENCES players(user_id) ON DELETE CASCADE,
-                    class_id INTEGER REFERENCES classes(class_id) ON DELETE SET NULL,
-                    PRIMARY KEY (user_id)
-                );
-            """)
-
-            await connection.execute("""
-                CREATE TABLE IF NOT EXISTS shop_items (
-                    item_id SERIAL PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    description TEXT,
-                    cost INTEGER NOT NULL,
-                    rarity TEXT CHECK (rarity IN ('comum', 'raro', 'épico')) NOT NULL
-                );
-            """)
-
-            await connection.execute("""
-                CREATE TABLE IF NOT EXISTS debuffs (
-                    debuff_id SERIAL PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    description TEXT,
-                    duration INTEGER NOT NULL
-                );
-            """)
-
-            await connection.execute("""
-                CREATE TABLE IF NOT EXISTS player_debuffs (
-                    user_id BIGINT REFERENCES players(user_id) ON DELETE CASCADE,
-                    debuff_id INTEGER REFERENCES debuffs(debuff_id) ON DELETE CASCADE,
-                    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (user_id, debuff_id)
-                );
-            """)
-
-            await connection.execute("""
-                CREATE TABLE IF NOT EXISTS snipers (
-                    id SERIAL PRIMARY KEY,
-                    user_id BIGINT UNIQUE NOT NULL,
-                    sniper_type VARCHAR(20) NOT NULL,
-                    obtained_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-            print("Tabelas do banco de dados garantidas.")
+            print("Tabela 'player_rankings' garantida no banco de dados.")
     except Exception as e:
         print(f"Erro ao conectar ao banco de dados: {e}")
 
@@ -156,14 +91,6 @@ async def on_command_error(ctx, error):
             color=discord.Color.orange()
         )
         await ctx.send(embed=embed)
-    elif isinstance(error, asyncpg.exceptions.UndefinedColumnError):
-        embed = discord.Embed(
-            title="⚠️ Erro no Banco de Dados",
-            description="Ocorreu um erro no banco de dados: coluna inexistente.",
-            color=discord.Color.red()
-        )
-        await ctx.send(embed=embed)
-        print(f"Erro detectado: {error}")
     else:
         embed = discord.Embed(
             title="⚠️ Erro de Comando",
