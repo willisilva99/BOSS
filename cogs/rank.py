@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands, tasks
 from collections import defaultdict
+import asyncio
 
 class RankCog(commands.Cog):
     def __init__(self, bot):
@@ -24,26 +25,15 @@ class RankCog(commands.Cog):
         self.show_rank.start()
         self.update_roles.start()
 
-    def record_damage(self, user_id, damage):
-        """Registra o dano causado por um usuário."""
-        self.damage_rank[user_id] += damage
-
-    def record_kill(self, user_id):
-        """Registra uma kill no boss por um usuário."""
-        self.kill_rank[user_id] += 1
-
-    def record_sniper(self, user_id):
-        """Registra uma sniper ganha por um usuário."""
-        self.sniper_rank[user_id] += 1
-
     @commands.Cog.listener()
     async def on_ready(self):
-        # Verifica se o bot está pronto e encontra o canal de rank
+        # Aguarda um delay para garantir que o bot está completamente conectado
+        await asyncio.sleep(5)  # Delay de 5 segundos para inicialização completa
         channel = self.bot.get_channel(self.channel_id)
         if channel:
             print(f"Canal de rank encontrado: {channel.name} (ID: {channel.id})")
         else:
-            print("Erro: Canal de classificação não encontrado.")
+            print("Erro: Canal de classificação não encontrado após o delay de inicialização.")
         print("RankCog está pronto!")
 
     @tasks.loop(minutes=2)
