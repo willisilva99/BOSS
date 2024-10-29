@@ -6,7 +6,7 @@ class BossCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.current_boss = None  # Inicialmente, sem boss ativo
-        self.cooldown_time = 3600  # 1 hora de cooldown por usuário
+        self.cooldown_time = 7200  # Aumentando para 2 horas (7200 segundos)
         self.last_attack_time = {}
         self.snipers = ["🔫 SNIPER BOSS RARA", "🔥 SNIPER EMBERIUM", "💎 SNIPER DAMANTY"]
 
@@ -105,8 +105,18 @@ class BossCog(commands.Cog):
     @commands.command(name="boss")
     async def boss_attack(self, ctx):
         """Permite atacar o boss e, se derrotado, concede uma premiação."""
+        # Verifica se o comando foi chamado no canal correto
+        if ctx.channel.id != 1299092242673303552:
+            await ctx.send("⚠️ Este comando só pode ser usado neste canal.")
+            return
+
         user_id = ctx.author.id
         display_name = f"<@{ctx.author.id}>"  # Menciona o usuário com o símbolo @
+
+        # Limpa mensagens anteriores do chat
+        async for message in ctx.channel.history(limit=5):  # Limpa as últimas 5 mensagens
+            if message.author == self.bot.user:
+                await message.delete()
 
         if not self.current_boss:
             # Escolhe um boss aleatório para invocar
