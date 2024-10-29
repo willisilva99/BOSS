@@ -23,6 +23,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # Lista de cogs
 cogs = [
     "boss",  # Cog do boss com funcionalidades avançadas
+    "rank",  # Cog de ranking dos jogadores
 ]
 
 # Mensagens de status aleatórias para dar mais imersão ao bot
@@ -39,23 +40,20 @@ status_messages = [
     "realizando missões..."
 ]
 
-# 🔥 **Adicionar Tabela Snipers**
-# Este trecho será adicionado na função setup_database()
-
 async def setup_database():
-    # Conecta ao banco de dados e cria as tabelas, se não existirem
+    """Conecta ao banco de dados e cria as tabelas, se não existirem."""
     try:
         bot.pool = await asyncpg.create_pool(dsn=DATABASE_URL, min_size=1, max_size=10)
         print("Conexão com o banco de dados estabelecida com sucesso.")
 
         async with bot.pool.acquire() as connection:
-            # Criação das tabelas existentes no banco de dados
+            # Criação das tabelas, caso não existam
             await connection.execute("""
                 CREATE TABLE IF NOT EXISTS players (
                     user_id BIGINT PRIMARY KEY,
                     wounds INTEGER DEFAULT 0,
                     money INTEGER DEFAULT 1000,
-                    ember INTEGER DEFAULT 0,  -- Adicionada a coluna Ember
+                    ember INTEGER DEFAULT 0,
                     xp INTEGER DEFAULT 0,
                     level INTEGER DEFAULT 1,
                     infected BOOLEAN DEFAULT FALSE,
@@ -71,7 +69,6 @@ async def setup_database():
                 );
             """)
 
-            # Tabela para Classes
             await connection.execute("""
                 CREATE TABLE IF NOT EXISTS classes (
                     class_id SERIAL PRIMARY KEY,
@@ -80,7 +77,6 @@ async def setup_database():
                 );
             """)
 
-            # Tabela para Associar Jogadores às Classes
             await connection.execute("""
                 CREATE TABLE IF NOT EXISTS player_classes (
                     user_id BIGINT REFERENCES players(user_id) ON DELETE CASCADE,
@@ -89,7 +85,6 @@ async def setup_database():
                 );
             """)
 
-            # Tabela para Itens da Loja
             await connection.execute("""
                 CREATE TABLE IF NOT EXISTS shop_items (
                     item_id SERIAL PRIMARY KEY,
@@ -100,17 +95,15 @@ async def setup_database():
                 );
             """)
 
-            # Tabela para Debuffs (Caso queira gerenciar múltiplos debuffs)
             await connection.execute("""
                 CREATE TABLE IF NOT EXISTS debuffs (
                     debuff_id SERIAL PRIMARY KEY,
                     name TEXT NOT NULL,
                     description TEXT,
-                    duration INTEGER NOT NULL  -- duração em segundos
+                    duration INTEGER NOT NULL
                 );
             """)
 
-            # Tabela para Gerenciar Debuffs Aplicados aos Jogadores
             await connection.execute("""
                 CREATE TABLE IF NOT EXISTS player_debuffs (
                     user_id BIGINT REFERENCES players(user_id) ON DELETE CASCADE,
@@ -120,7 +113,6 @@ async def setup_database():
                 );
             """)
 
-            # 🔥 **Adicionar Tabela Snipers**
             await connection.execute("""
                 CREATE TABLE IF NOT EXISTS snipers (
                     id SERIAL PRIMARY KEY,
@@ -129,75 +121,12 @@ async def setup_database():
                     obtained_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
-            print("Tabela 'snipers' garantida no banco de dados.")
-
-            # Definição das colunas necessárias para cada tabela (se necessário)
-            required_columns = {
-                "players": {
-                    "wounds": "INTEGER DEFAULT 0",
-                    "money": "INTEGER DEFAULT 1000",
-                    "ember": "INTEGER DEFAULT 0",  # Adicionada a coluna Ember
-                    "xp": "INTEGER DEFAULT 0",
-                    "level": "INTEGER DEFAULT 1",
-                    "infected": "BOOLEAN DEFAULT FALSE",
-                    "damage_debuff": "BOOLEAN DEFAULT FALSE"
-                },
-                "inventory": {
-                    "item": "TEXT NOT NULL"
-                },
-                "classes": {
-                    "name": "TEXT UNIQUE NOT NULL",
-                    "description": "TEXT"
-                },
-                "player_classes": {
-                    "user_id": "BIGINT REFERENCES players(user_id) ON DELETE CASCADE",
-                    "class_id": "INTEGER REFERENCES classes(class_id) ON DELETE SET NULL"
-                },
-                "shop_items": {
-                    "name": "TEXT NOT NULL",
-                    "description": "TEXT",
-                    "cost": "INTEGER NOT NULL",
-                    "rarity": "TEXT CHECK (rarity IN ('comum', 'raro', 'épico')) NOT NULL"
-                },
-                "debuffs": {
-                    "name": "TEXT NOT NULL",
-                    "description": "TEXT",
-                    "duration": "INTEGER NOT NULL"
-                },
-                "player_debuffs": {
-                    "user_id": "BIGINT REFERENCES players(user_id) ON DELETE CASCADE",
-                    "debuff_id": "INTEGER REFERENCES debuffs(debuff_id) ON DELETE CASCADE",
-                    "applied_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-                },
-                "snipers": {  # Adiciona as colunas para a tabela snipers, caso necessário
-                    "id": "SERIAL PRIMARY KEY",
-                    "user_id": "BIGINT UNIQUE NOT NULL",
-                    "sniper_type": "VARCHAR(20) NOT NULL",
-                    "obtained_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-                }
-            }
-
-            for table, columns in required_columns.items():
-                existing_columns = await connection.fetch("""
-                    SELECT column_name FROM information_schema.columns
-                    WHERE table_name = $1;
-                """, table)
-
-                existing_columns = {record['column_name'] for record in existing_columns}
-
-                for column, definition in columns.items():
-                    if column not in existing_columns:
-                        alter_query = f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition};"
-                        try:
-                            await connection.execute(alter_query)
-                            print(f"Coluna '{column}' adicionada à tabela '{table}'.")
-                        except Exception as e:
-                            print(f"Erro ao adicionar a coluna '{column}' na tabela '{table}': {e}")
+            print("Tabelas do banco de dados garantidas.")
     except Exception as e:
         print(f"Erro ao conectar ao banco de dados: {e}")
 
 async def load_cogs():
-    # Carrega todos os cogs listados
+    """Carrega todos os cogs listados."""
     for cog in cogs:
         try:
             await bot.load_extension(f"cogs.{cog}")
@@ -207,7 +136,7 @@ async def load_cogs():
 
 @tasks.loop(minutes=10)
 async def change_status():
-    # Atualiza o status do bot aleatoriamente a cada 10 minutos
+    """Atualiza o status do bot aleatoriamente a cada 10 minutos."""
     new_status = random.choice(status_messages)
     await bot.change_presence(activity=discord.Game(new_status))
 
@@ -219,7 +148,7 @@ async def on_ready():
 
 @bot.event
 async def on_command_error(ctx, error):
-    # Captura e exibe erros de comando
+    """Captura e exibe erros de comando."""
     if isinstance(error, commands.CommandOnCooldown):
         embed = discord.Embed(
             title="⏳ Cooldown Ativo",
@@ -236,7 +165,6 @@ async def on_command_error(ctx, error):
         await ctx.send(embed=embed)
         print(f"Erro detectado: {error}")
     else:
-        # Captura e exibe outros erros de comando
         embed = discord.Embed(
             title="⚠️ Erro de Comando",
             description=f"Ocorreu um erro ao executar `{ctx.command}`:\n{error}",
@@ -247,7 +175,7 @@ async def on_command_error(ctx, error):
 
 @bot.event
 async def on_message(message):
-    # Ignora mensagens do próprio bot e processa comandos nas mensagens
+    """Ignora mensagens do próprio bot e processa comandos nas mensagens."""
     if message.author == bot.user:
         return
     await bot.process_commands(message)
