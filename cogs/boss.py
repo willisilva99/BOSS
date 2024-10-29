@@ -1,8 +1,6 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 import random
-import time
-import asyncio
 
 class BossCog(commands.Cog):
     def __init__(self, bot):
@@ -57,5 +55,6 @@ class BossCog(commands.Cog):
         """Evento chamado quando o bot está pronto."""
         print("BossCog está pronto!")
 
+# Função de setup para adicionar o cog ao bot
 async def setup(bot):
     await bot.add_cog(BossCog(bot))
