@@ -3,6 +3,7 @@ from discord.ext import commands, tasks
 import os
 import random
 from dotenv import load_dotenv
+import asyncio  # Corrige o erro ao importar asyncio
 
 # Carrega variáveis de ambiente do arquivo .env
 load_dotenv()
