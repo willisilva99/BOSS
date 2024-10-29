@@ -2,12 +2,8 @@ import discord
 from discord.ext import commands, tasks
 import random
 from collections import defaultdict
-import os
 import asyncio
-from dotenv import load_dotenv
-
-# Carregar variáveis de ambiente do arquivo .env
-load_dotenv()
+import os
 
 class RankCog(commands.Cog):
     def __init__(self, bot):
@@ -61,6 +57,39 @@ class RankCog(commands.Cog):
         else:
             print("Erro: Canal de classificação não encontrado após o delay de inicialização.")
         print("RankCog está pronto!")
+
+    @commands.command(name="rank")
+    async def show_rank(self, ctx):
+        """Exibe o ranking dos jogadores em tempo real."""
+        channel = self.bot.get_channel(self.channel_id)
+        if not channel:
+            await ctx.send("Erro: Canal de classificação não encontrado.")
+            return
+
+        embed = discord.Embed(
+            title="🏆 Ranking Atual",
+            description="Aqui estão os rankings em tempo real!",
+            color=discord.Color.orange()
+        )
+
+        # Ranking de Danos
+        embed.add_field(name="🔥 Dano Total", value=self.format_rank(self.damage_rank), inline=False)
+
+        # Ranking de Kills
+        embed.add_field(name="⚔️ Kills", value=self.format_rank(self.kill_rank), inline=False)
+
+        # Ranking de Snipers
+        embed.add_field(name="🔫 Snipers Ganhadas", value=self.format_rank(self.sniper_rank), inline=False)
+
+        await ctx.send(embed=embed)
+
+    def format_rank(self, rank_dict):
+        """Formata o ranking para exibição."""
+        sorted_rank = sorted(rank_dict.items(), key=lambda x: x[1], reverse=True)
+        rank_list = []
+        for user_id, score in sorted_rank[:5]:  # Top 5
+            rank_list.append(f"<@{user_id}>: {score}")
+        return "\n".join(rank_list) if rank_list else "Ninguém ainda!"
 
     @tasks.loop(hours=3)
     async def show_damage_rank(self):
@@ -135,7 +164,7 @@ class RankCog(commands.Cog):
                 # Atribui o cargo correspondente ao ranking atual
                 role = guild.get_role(role_ids[index])
                 await member.add_roles(role, reason="Atualização de rank")
-
+        
         # Remove cargos dos usuários que saíram do Top 3
         for role_id in role_ids:
             role = guild.get_role(role_id)
@@ -266,39 +295,28 @@ class BossCog(commands.Cog):
                                 f"HP restante do boss: {self.current_boss['hp']}",
                     color=discord.Color.orange()
                 )
-
-                boss_image_key = self.boss_image_keys.get(self.current_boss["name"], None)
-                if boss_image_key:
-                    embed.set_image(url=self.boss_images[boss_image_key]["attack"])
+                embed.set_image(url=self.boss_images[self.current_boss["name"]]["attack"])
                 await ctx.send(embed=embed)
 
                 if self.current_boss["hp"] <= 0:
-                    reward_message = self.generate_sniper_drop()
+                    self.rank_cog.record_damage(user_id, damage)  # Registra o dano no ranking
+                    self.rank_cog.record_kill(user_id)  # Registra a kill no ranking
                     embed = discord.Embed(
                         title="🏆 Boss Derrotado!",
-                        description=f"{random.choice(self.boss_dialogues['defeat'])}\n{reward_message}",
+                        description=f"{display_name} derrotou o {self.current_boss['name']}!",
                         color=discord.Color.green()
                     )
-                    if boss_image_key:
-                        embed.set_image(url=self.boss_images[boss_image_key]["defeated"])
+                    embed.set_image(url=self.boss_images[self.current_boss["name"]]["defeated"])
                     await ctx.send(embed=embed)
 
-                    # Atualiza os rankings após derrotar o boss
-                    self.bot.get_cog(RankCog).record_damage(user_id, damage)  # Registra o dano no ranking
-                    self.bot.get_cog(RankCog).record_kill(user_id)  # Registra a kill no ranking
-
                     self.current_boss = None
-                elif await self.attempt_boss_escape():
+                else:
                     embed = discord.Embed(
-                        title="🏃‍♂️ O Boss Fugiu!",
-                        description=f"{random.choice(self.boss_dialogues['escape'])}\n"
-                                    "Você não ganhou nenhuma recompensa.",
-                        color=discord.Color.yellow()
+                        title="⚠️ O Boss ainda está de pé!",
+                        description=f"{self.current_boss['name']} ainda não foi derrotado!",
+                        color=discord.Color.red()
                     )
-                    if boss_image_key:
-                        embed.set_image(url=self.boss_images[boss_image_key]["flee"])
                     await ctx.send(embed=embed)
-                    self.current_boss = None
             else:
                 time_remaining = int(self.cooldown_time - (ctx.message.created_at.timestamp() - self.last_attack_time[user_id]))
                 minutes, seconds = divmod(time_remaining, 60)
@@ -331,5 +349,6 @@ async def on_ready():
     print(f"Bot conectado como {bot.user}")
     print("Bot está pronto!")
 
+# Rodando o bot
 asyncio.run(setup(bot))
 bot.run(os.getenv("TOKEN"))
