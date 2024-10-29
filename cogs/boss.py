@@ -10,6 +10,17 @@ class BossCog(commands.Cog):
         self.last_attack_time = {}
         self.snipers = ["🔫 SNIPER BOSS RARA", "🔥 SNIPER EMBERIUM", "💎 SNIPER DAMANTY"]
         
+        # URLs das imagens do Gigante Emberium
+        self.boss_images = {
+            "Gigante Emberium": {
+                "default": "https://discord.com/channels/1186390028990025820/1300796026378256484/1300796094607003773",
+                "attack": "https://discord.com/channels/1186390028990025820/1300796026378256484/1300796526179782758",
+                "attack_player": "https://discord.com/channels/1186390028990025820/1300796026378256484/1300796853016723528",
+                "flee": "https://discord.com/channels/1186390028990025820/1300796026378256484/1300801431405727795",
+                "defeated": "https://discord.com/channels/1186390028990025820/1300796026378256484/1300801821169942568"
+            }
+        }
+        
         # Lista de Bosses com diferentes características e HP elevado para mais dificuldade
         self.bosses = [
             {"name": "👹 Mega Boss", "hp": 5000, "attack_chance": 30, "damage_range": (50, 150)},
@@ -77,6 +88,7 @@ class BossCog(commands.Cog):
                             "Todos devem atacá-lo para derrotá-lo!",
                 color=discord.Color.red()
             )
+            embed.set_image(url=self.boss_images["Gigante Emberium"]["default"])  # Imagem do boss
             await ctx.send(embed=embed)
         else:
             # Caso o boss já tenha sido invocado, aplica o cooldown padrão para o atacante
@@ -110,6 +122,7 @@ class BossCog(commands.Cog):
                         description=f"{random.choice(self.boss_dialogues['defeat'])}\n{reward_message}",
                         color=discord.Color.green()
                     )
+                    embed.set_image(url=self.boss_images["Gigante Emberium"]["defeated"])  # Imagem do boss derrotado
                     await ctx.send(embed=embed)
                     self.current_boss = None  # Reinicia o boss para próxima invocação
                 else:
@@ -121,6 +134,7 @@ class BossCog(commands.Cog):
                                         "Você não ganhou nenhuma recompensa.",
                             color=discord.Color.yellow()
                         )
+                        embed.set_image(url=self.boss_images["Gigante Emberium"]["flee"])  # Imagem do boss fugindo
                         await ctx.send(embed=embed)
                         self.current_boss = None  # Reinicia o boss para próxima invocação
             else:
