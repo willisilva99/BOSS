@@ -18,6 +18,10 @@ class RankCog(commands.Cog):
             "sniper": [1300854639658270761, 1300854891350327438, 1300855252928434288]
         }
 
+        # IDs do servidor e do canal
+        self.guild_id = 1186390028990025820  # ID do seu servidor
+        self.channel_id = 1186636197934661632  # ID do canal onde o rank será exibido
+
         # Alterna o rank a cada 2 minutos e atualiza cargos a cada 3 horas
         self.show_rank.start()
         self.update_roles.start()
@@ -56,8 +60,7 @@ class RankCog(commands.Cog):
     @tasks.loop(minutes=2)
     async def show_rank(self):
         """Alterna entre os rankings a cada 2 minutos."""
-        channel_id = 1186636197934661632  # ID do canal onde o rank será exibido
-        channel = self.bot.get_channel(channel_id)
+        channel = self.bot.get_channel(self.channel_id)
         if not channel:
             print("Erro: Canal de rank não encontrado.")
             return
@@ -110,8 +113,7 @@ class RankCog(commands.Cog):
     @tasks.loop(hours=3)
     async def update_roles(self):
         """Atualiza os cargos dos Top 3 de cada ranking a cada 3 horas."""
-        guild_id = 123456789012345678  # ID do seu servidor
-        guild = self.bot.get_guild(guild_id)
+        guild = self.bot.get_guild(self.guild_id)
         if not guild:
             print("Erro: Servidor não encontrado.")
             return
