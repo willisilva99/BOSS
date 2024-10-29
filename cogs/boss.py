@@ -14,12 +14,7 @@ class BossCog(commands.Cog):
         self.panico_geral_active = False
 
         # ID do Administrador Específico
-        self.admin_id = 470628393272999948  # 🔥 Novo
-
-        # Iniciar as tarefas
-        self.boss_attack_task.start()
-        self.rank_update.start()
-        self.change_status.start()
+        self.admin_id = 470628393272999948  # 🔥 Substitua pelo ID correto
 
         # Configuração de bosses
         self.bosses = [
@@ -70,9 +65,9 @@ class BossCog(commands.Cog):
             "antiviral": "💊 Remédio Antiviral",
             "soro": "💉 Soro de Força"
         }
-        self.status_channel_id = 1186636197934661632  # Substitua pelo ID correto
-        self.commands_channel_id = 1299092242673303552  # Substitua pelo ID correto
-        self.exempt_role_id = 1296631135442309160  # Substitua pelo ID correto
+        self.status_channel_id = 1186636197934661632  # 🔥 Substitua pelo ID correto
+        self.commands_channel_id = 1299092242673303552  # 🔥 Substitua pelo ID correto
+        self.exempt_role_id = 1296631135442309160  # 🔥 Substitua pelo ID correto
         self.minions = ["Minion 1 🧟", "Minion 2 🧟", "Minion 3 🧟"]
 
         # Configuração da Loja Ember
@@ -99,7 +94,7 @@ class BossCog(commands.Cog):
             }
         }
 
-        # 🔥 **Novo: Definição dos Tipos de Snipers e Armas Associadas**
+        # 🔥 **Definição dos Tipos de Snipers e Armas Associadas**
         self.snipers = {
             "adamanty": {
                 "name": "Sniper Adamanty",
@@ -115,173 +110,58 @@ class BossCog(commands.Cog):
             }
         }
 
-        # 🔥 **Novo: Variável para controlar o cooldown das mensagens de sniper**
+        # 🔥 **Variável para controlar o cooldown das mensagens de sniper**
         self.last_sniper_announcement = 0  # Armazena o timestamp da última mensagem
 
         # Configuração de Missões Diárias
         self.daily_mission = {}
 
-    async def ensure_player(self, user_id):
-        """Garante que o usuário tenha uma entrada na tabela 'players'."""
-        async with self.bot.pool.acquire() as connection:
-            # Tenta buscar o jogador
-            result = await connection.fetchrow("SELECT * FROM players WHERE user_id = $1", user_id)
-            if not result:
-                # Se não existir, insere com valores padrão
-                await connection.execute("""
-                    INSERT INTO players (user_id, wounds, money, ember, xp, level, infected, damage_debuff)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                """, user_id, 0, 1000, 0, 0, 1, False, False)
-                print(f"Jogador {user_id} adicionado à tabela 'players'.")
+        # Iniciar as tarefas
+        self.boss_attack_task.start()
+        self.rank_update.start()
+        self.change_status.start()
 
-    @commands.group(invoke_without_command=True, name="boss")
-    @commands.cooldown(1, 3600, commands.BucketType.user)  # 1 hora de cooldown por usuário
-    async def boss(self, ctx):
-        """Comando principal para interagir com o boss."""
-        if ctx.channel.id != self.commands_channel_id:
-            await ctx.send("⚠️ Este comando só pode ser usado no canal designado para combates.")
-            return
+    # 🔥 **Definição das Tarefas Antes do Método __init__**
 
-        user_id = ctx.author.id
+    @tasks.loop(minutes=5)
+    async def boss_attack_task(self):
+        """Tarefa que faz o boss atacar periodicamente."""
+        if self.current_boss:
+            channel = self.bot.get_channel(self.status_channel_id)
+            if channel is None:
+                print(f"Canal com ID {self.status_channel_id} não encontrado.")
+                return
 
-        # Garante que o jogador existe no banco de dados
-        await self.ensure_player(user_id)
+            # Seleciona um jogador aleatório para atacar
+            channel_combat = self.bot.get_channel(self.commands_channel_id)
+            if channel_combat is None:
+                print(f"Canal com ID {self.commands_channel_id} não encontrado.")
+                return
 
-        # Verifica se o jogador tem o cargo que ignora o cooldown global
-        has_exempt_role = any(role.id == self.exempt_role_id for role in ctx.author.roles)
+            combat_members = [member for member in channel_combat.members if member.id != self.bot.user.id]
+            if combat_members:
+                target = random.choice(combat_members)
+                damage = self.current_boss["attack_power"]
+                # Aqui você pode implementar a lógica para aplicar dano ao jogador
+                # Por exemplo, atualizar a coluna 'wounds' no banco de dados
 
-        if has_exempt_role:
-            # Executa a lógica sem aplicar o cooldown
-            await self.invocar_boss(ctx, user_id)
-        else:
-            if not self.current_boss:
-                # Invocação do Boss
-                await self.invocar_boss(ctx, user_id)
-            else:
-                # Verifica se o jogador está infectado
-                if await self.is_infected(user_id):
-                    await ctx.send("❌ Você está infectado e não pode atacar o boss. Encontre uma cura primeiro!")
-                    return
+                # Simulação de dano
+                await self.award_wounds(target.id, damage)
 
-                # Ataque ao Boss
-                damage = random.randint(50, 150)
-                if await self.has_damage_debuff(user_id):
-                    damage = int(damage * 0.75)  # Reduz o dano em 25% se o jogador tiver debuff
-                    await ctx.send(f"💀 {ctx.author.display_name} está enfraquecido e causou menos dano!")
-
-                self.current_boss["current_hp"] -= damage
-                await self.award_xp(user_id, 10)  # Sistema de XP ao atacar
-
-                # Recompensa em Ember (opcional)
-                ember_reward = random.randint(50, 100)
-                await self.award_ember(user_id, ember_reward)
-
-                # Mensagem do Ataque com Sarcasmo
                 embed = discord.Embed(
-                    title="💥 Ataque ao Boss",
-                    description=f"{ctx.author.display_name} causou {damage} de dano!\n**HP Restante do Boss:** {self.current_boss['current_hp']}",
-                    color=discord.Color.orange()
+                    title="🔨 Ataque do Boss",
+                    description=f"**{self.current_boss['name']}** atacou **{target.display_name}** causando {damage} de dano!",
+                    color=discord.Color.dark_red()
                 )
-                # Adicionar tom sarcástico na mensagem
-                sarcasm_phrases = [
-                    f"Bom trabalho, {ctx.author.display_name}! Você quase derrubou o boss...",
-                    f"Wow, {ctx.author.display_name}, isso foi... interessante.",
-                    f"Não sei como o boss resistiu, {ctx.author.display_name}. Foi um esforço heróico!"
-                ]
-                embed.set_footer(text=random.choice(sarcasm_phrases))
-                await ctx.send(embed=embed)
+                await channel.send(embed=embed)
 
-                # Aplica infecção aleatória e penalidade
-                await self.apply_infection(user_id)
-                await self.apply_damage_debuff(user_id)
+    @boss_attack_task.before_loop
+    async def before_boss_attack_task(self):
+        await self.bot.wait_until_ready()
 
-                # Checa se o boss foi derrotado
-                if self.current_boss["current_hp"] <= 0:
-                    await self.defeat_boss(ctx, user_id)
-                else:
-                    # Atualiza fase do boss se necessário
-                    await self.update_boss_phase()
-
-    # Subcomandos do Grupo Boss
-
-    @boss.command(name="status")
-    async def boss_status(self, ctx):
-        """Exibe o status atual do boss."""
-        if not self.current_boss:
-            await ctx.send("⚔️ Não há nenhum boss ativo no momento.")
-            return
-
-        embed = discord.Embed(
-            title=f"⚔️ Status do Boss: {self.current_boss['name']}",
-            description=f"**HP:** {self.current_boss['current_hp']}/{self.current_boss['hp']}\n"
-                        f"**Fase:** {self.current_boss['phase']}",
-            color=discord.Color.blue()
-        )
-        await ctx.send(embed=embed)
-
-    @boss.command(name="stats")
-    async def boss_stats(self, ctx):
-        """Exibe as estatísticas do jogador."""
-        user_id = ctx.author.id
-        await self.ensure_player(user_id)
-
-        async with self.bot.pool.acquire() as connection:
-            result = await connection.fetchrow("SELECT * FROM players WHERE user_id = $1", user_id)
-
-        if not result:
-            await ctx.send("⚠️ Não foi possível encontrar seu perfil. Tente novamente.")
-            return
-
-        embed = discord.Embed(
-            title=f"📊 Estatísticas de {ctx.author.display_name}",
-            color=discord.Color.purple()
-        )
-        embed.add_field(name="Nível", value=result['level'], inline=True)
-        embed.add_field(name="XP", value=result['xp'], inline=True)
-        embed.add_field(name="Dinheiro", value=result['money'], inline=True)
-        embed.add_field(name="Ember", value=result['ember'], inline=True)
-        embed.add_field(name="Ferimentos", value=result['wounds'], inline=True)
-        embed.add_field(name="Infectado", value="Sim" if result['infected'] else "Não", inline=True)
-        embed.add_field(name="Debuff de Dano", value="Sim" if result['damage_debuff'] else "Não", inline=True)
-        await ctx.send(embed=embed)
-
-    @boss.command(name="inventory")
-    async def boss_inventory(self, ctx):
-        """Exibe o inventário do jogador."""
-        user_id = ctx.author.id
-        await self.ensure_player(user_id)
-
-        async with self.bot.pool.acquire() as connection:
-            items = await connection.fetch("SELECT item FROM inventory WHERE user_id = $1", user_id)
-
-        if not items:
-            await ctx.send("📦 Seu inventário está vazio.")
-            return
-
-        inventory_list = "\n".join([f"- {item['item']}" for item in items])
-        embed = discord.Embed(
-            title=f"📦 Inventário de {ctx.author.display_name}",
-            description=inventory_list,
-            color=discord.Color.green()
-        )
-        await ctx.send(embed=embed)
-
-    @boss.command(name="use")
-    async def boss_use_item(self, ctx, *, item_name: str = None):
-        """Permite que o jogador use um item do inventário."""
-        if not item_name:
-            await ctx.send("⚠️ Por favor, especifique o item que deseja usar. Exemplo: `!boss use Remédio Antiviral`")
-            return
-
-        user_id = ctx.author.id
-        await self.ensure_player(user_id)
-
-        success, message = await self.use_consumable(user_id, item_name)
-        await ctx.send(message)
-
-    @boss.command(name="rank")
-    async def boss_rank(self, ctx):
-        """Exibe o ranking dos melhores jogadores."""
+    @tasks.loop(hours=2)
+    async def rank_update(self):
+        """Atualiza o ranking dos melhores jogadores a cada 2 horas."""
         async with self.bot.pool.acquire() as connection:
             top_players = await connection.fetch(
                 "SELECT user_id, xp FROM players ORDER BY xp DESC LIMIT 10"
@@ -295,502 +175,48 @@ class BossCog(commands.Cog):
             description=ranking,
             color=discord.Color.gold()
         )
-        await ctx.send(embed=embed)
+        await self.bot.get_channel(self.status_channel_id).send(embed=embed)
 
-    @boss.command(name="help")
-    async def boss_help(self, ctx):
-        """Exibe a ajuda dos comandos relacionados ao boss."""
-        embed = discord.Embed(
-            title="📜 Ajuda dos Comandos do Boss",
-            color=discord.Color.gold()
-        )
-        embed.add_field(name="!boss", value="Invoca ou ataca o boss. Use no canal designado para combates.", inline=False)
-        embed.add_field(name="!boss status", value="Exibe o status atual do boss.", inline=False)
-        embed.add_field(name="!boss stats", value="Exibe suas estatísticas pessoais.", inline=False)
-        embed.add_field(name="!boss inventory", value="Exibe seu inventário de itens.", inline=False)
-        embed.add_field(name="!boss use <item>", value="Usa um item do seu inventário. Exemplo: `!boss use Remédio Antiviral`", inline=False)
-        embed.add_field(name="!boss rank", value="Exibe o ranking dos melhores jogadores.", inline=False)
-        embed.add_field(name="!boss help", value="Exibe esta mensagem de ajuda.", inline=False)
-        embed.add_field(name="!boss shop_ember", value="Exibe os itens disponíveis para compra com Ember.", inline=False)
-        embed.add_field(name="!boss buy_ember <item_key>", value="Compra um item usando Ember. Exemplo: `!boss buy_ember armadura_de_zumbi`", inline=False)
-        embed.add_field(name="!boss balance", value="Exibe seu saldo atual de dinheiro.", inline=False)
-        embed.add_field(name="!boss balance_ember", value="Exibe seu saldo atual de Ember.", inline=False)
-        embed.add_field(name="!boss daily_mission", value="Participa da missão diária para ganhar Ember.", inline=False)
-        embed.add_field(name="!boss event", value="Inicia um evento especial apocalíptico.", inline=False)
-        embed.add_field(name="!boss claim_sniper", value="Reivindica a recompensa da Sniper recebida.", inline=False)  # 🔥 Novo
-        embed.add_field(name="!boss notify_admin", value="Notifica o administrador sobre a obtenção de uma Sniper.", inline=False)  # 🔥 Novo
-        embed.add_field(name="!boss steal_sniper <@user>", value="Permite que o admin roube a Sniper de um usuário. Apenas admin específico.", inline=False)  # 🔥 Novo
-        embed.add_field(name="!boss destroy_sniper <@user>", value="Permite que o admin destrua a Sniper de um usuário. Apenas admin específico.", inline=False)  # 🔥 Novo
-        await ctx.send(embed=embed)
+    @rank_update.before_loop
+    async def before_rank_update_before_loop(self):
+        await self.bot.wait_until_ready()
 
-    # Comandos da Loja Ember
-
-    @boss.command(name="shop_ember")
-    async def boss_shop_ember(self, ctx):
-        """Exibe os itens disponíveis para compra com Ember."""
-        embed = discord.Embed(
-            title="🛒 Loja de Ember",
-            description="Aqui você pode comprar itens exclusivos usando Ember.",
-            color=discord.Color.blue()
-        )
-
-        for item_key, item in self.shop_ember_items.items():
-            embed.add_field(
-                name=item['name'],
-                value=f"Custo: {item['price']} Ember\n{item['description']}",
-                inline=False
-            )
-
-        await ctx.send(embed=embed)
-
-    @boss.command(name="buy_ember")
-    async def boss_buy_ember(self, ctx, *, item_key: str = None):
-        """Permite que o jogador compre um item da loja usando Ember."""
-        if not item_key:
-            await ctx.send("⚠️ Por favor, especifique o item que deseja comprar. Exemplo: `!boss buy_ember armadura_de_zumbi`")
-            return
-
-        item_key = item_key.lower()
-
-        if item_key not in self.shop_ember_items:
-            await ctx.send("⚠️ Item não encontrado na loja de Ember. Use `!boss shop_ember` para ver os itens disponíveis.")
-            return
-
-        item = self.shop_ember_items[item_key]
-        user_id = ctx.author.id
-
-        # Garantir que o jogador exista no banco de dados
-        await self.ensure_player(user_id)
-
-        async with self.bot.pool.acquire() as connection:
-            # Obter o saldo atual de Ember do jogador
-            result = await connection.fetchrow("SELECT ember FROM players WHERE user_id = $1", user_id)
-            current_ember = result['ember'] if result else 0
-
-            if current_ember < item['price']:
-                await ctx.send("⚠️ Você não tem Ember suficiente para comprar este item.")
-                return
-
-            # Deduzir o preço do item do saldo de Ember do jogador
-            await connection.execute(
-                "UPDATE players SET ember = ember - $1 WHERE user_id = $2",
-                item['price'], user_id
-            )
-
-            # Adicionar o item ao inventário do jogador
-            await self.add_item_to_inventory(user_id, item['name'])
-
-        embed = discord.Embed(
-            title="🛍️ Compra Realizada!",
-            description=f"Você comprou **{item['name']}** por {item['price']} Ember.",
-            color=discord.Color.green()
-        )
-        await ctx.send(embed=embed)
-
-    # Comandos de Saldo
-
-    @boss.command(name="balance")
-    async def boss_balance(self, ctx):
-        """Exibe o saldo atual de dinheiro do jogador."""
-        user_id = ctx.author.id
-        await self.ensure_player(user_id)
-
-        async with self.bot.pool.acquire() as connection:
-            result = await connection.fetchrow("SELECT money FROM players WHERE user_id = $1", user_id)
-            current_money = result['money'] if result else 0
-
-        embed = discord.Embed(
-            title=f"💰 Saldo de {ctx.author.display_name}",
-            description=f"Você possui **{current_money}** 💰.",
-            color=discord.Color.gold()
-        )
-        await ctx.send(embed=embed)
-
-    @boss.command(name="balance_ember")
-    async def boss_balance_ember(self, ctx):
-        """Exibe o saldo atual de Ember do jogador."""
-        user_id = ctx.author.id
-        await self.ensure_player(user_id)
-
-        async with self.bot.pool.acquire() as connection:
-            result = await connection.fetchrow("SELECT ember FROM players WHERE user_id = $1", user_id)
-            current_ember = result['ember'] if result else 0
-
-        embed = discord.Embed(
-            title=f"🔥 Saldo de Ember de {ctx.author.display_name}",
-            description=f"Você possui **{current_ember}** Ember.",
-            color=discord.Color.gold()
-        )
-        await ctx.send(embed=embed)
-
-    # Missão Diária
-
-    @boss.command(name="daily_mission")
-    async def boss_daily_mission(self, ctx):
-        """Permite que o jogador participe da missão diária para ganhar Ember."""
-        user_id = ctx.author.id
-        await self.ensure_player(user_id)
-
-        today = time.strftime("%Y-%m-%d")
-
-        if self.daily_mission.get(user_id) == today:
-            await ctx.send("⚠️ Você já completou a missão diária hoje. Tente novamente amanhã!")
-            return
-
-        # Definir a missão (exemplo: matar 10 minions)
-        mission_goal = 10
-        mission_reward = 500  # Ember
-
-        # Simulação da missão (em um cenário real, você implementaria lógica de acompanhamento)
-        # Aqui, automaticamente completamos a missão
-        await self.award_ember(user_id, mission_reward)
-        self.daily_mission[user_id] = today
-
-        embed = discord.Embed(
-            title="🎯 Missão Diária Completa!",
-            description=f"Você completou a missão diária e ganhou **{mission_reward}** Ember!",
-            color=discord.Color.green()
-        )
-        await ctx.send(embed=embed)
-
-    # Evento Especial
-
-    @boss.command(name="event")
-    async def boss_event(self, ctx):
-        """Inicia um evento especial apocalíptico."""
-        if self.current_event:
-            await ctx.send("⚠️ Já há um evento ativo no momento.")
-            return
-
-        # Definir um evento aleatório
-        events = [
-            {
-                "name": "Tempestade Zumbi 🌪️",
-                "description": "Uma tempestade zumbi está se aproximando! Aumente sua defesa temporariamente.",
-                "effect": self.activate_tempestade_zumbi
-            },
-            {
-                "name": "Horda Infinita 🧟‍♂️",
-                "description": "Uma horda infinita de zumbis está atacando! Ganhe mais XP por ataques ao boss.",
-                "effect": self.activate_horda_infinita
-            },
-            {
-                "name": "Pânico Geral 😱",
-                "description": "O pânico se espalha! Todos os jogadores têm uma chance maior de infecção.",
-                "effect": self.activate_panico_geral
-            }
+    @tasks.loop(minutes=10)
+    async def change_status(self):
+        """Atualiza o status do bot aleatoriamente a cada 10 minutos."""
+        status_messages = [
+            "sobrevivendo ao apocalipse...",
+            "explorando novas bases...",
+            "caçando zumbis...",
+            "coletando recursos...",
+            "protegendo os sobreviventes...",
+            "negociando embers...",
+            "construindo alianças...",
+            "lutando contra hordas...",
+            "explorando o mapa...",
+            "realizando missões..."
         ]
-        event = random.choice(events)
-        self.current_event = event
-        embed = discord.Embed(
-            title=f"✨ Evento Especial: {event['name']}",
-            description=event['description'],
-            color=discord.Color.dark_purple()
-        )
-        await ctx.send(embed=embed)
+        new_status = random.choice(status_messages)
+        await self.bot.change_presence(activity=discord.Game(new_status))
 
-        # Ativar o efeito do evento
-        await event['effect']()
+    @change_status.before_loop
+    async def before_change_status_before_loop(self):
+        await self.bot.wait_until_ready()
 
-    async def activate_tempestade_zumbi(self):
-        """Aumenta a defesa de todos os jogadores por um período."""
-        channel = self.bot.get_channel(self.status_channel_id)
-        if channel is None:
-            print(f"Canal com ID {self.status_channel_id} não encontrado.")
-            return
+    # Métodos de Utilidade
 
-        embed = discord.Embed(
-            title="🌪️ Tempestade Zumbi Ativada!",
-            description="Aumente sua defesa em 20% por 30 minutos.",
-            color=discord.Color.blue()
-        )
-        await channel.send(embed=embed)
-
-        # Implementar lógica para aumentar a defesa dos jogadores (exemplo: adicionar debuff)
-        # Aqui você pode adicionar flags ou alterar atributos no banco de dados
-
-        # Esperar 30 minutos
-        await asyncio.sleep(1800)
-
-        # Reverter o efeito
-        embed = discord.Embed(
-            title="🌪️ Tempestade Zumbi Terminada!",
-            description="Sua defesa voltou ao normal.",
-            color=discord.Color.blue()
-        )
-        await channel.send(embed=embed)
-        self.current_event = None
-
-    async def activate_horda_infinita(self):
-        """Aumenta o ganho de XP para os jogadores durante um período."""
-        channel = self.bot.get_channel(self.status_channel_id)
-        if channel is None:
-            print(f"Canal com ID {self.status_channel_id} não encontrado.")
-            return
-
-        embed = discord.Embed(
-            title="🧟‍♂️ Horda Infinita Ativada!",
-            description="Ganhe 50% mais XP por ataques ao boss por 1 hora.",
-            color=discord.Color.gold()
-        )
-        await channel.send(embed=embed)
-
-        # Implementar lógica para aumentar o ganho de XP dos jogadores
-        self.horda_infinita_active = True
-
-        # Esperar 1 hora
-        await asyncio.sleep(3600)
-
-        # Reverter o efeito
-        embed = discord.Embed(
-            title="🧟‍♂️ Horda Infinita Terminada!",
-            description="O ganho de XP voltou ao normal.",
-            color=discord.Color.gold()
-        )
-        await channel.send(embed=embed)
-        self.horda_infinita_active = False
-        self.current_event = None
-
-    async def activate_panico_geral(self):
-        """Aumenta a chance de infecção para todos os jogadores."""
-        channel = self.bot.get_channel(self.status_channel_id)
-        if channel is None:
-            print(f"Canal com ID {self.status_channel_id} não encontrado.")
-            return
-
-        embed = discord.Embed(
-            title="😱 Pânico Geral Ativado!",
-            description="A chance de infecção aumentou em 10% para todos os jogadores por 45 minutos.",
-            color=discord.Color.dark_red()
-        )
-        await channel.send(embed=embed)
-
-        # Implementar lógica para aumentar a chance de infecção
-        self.panico_geral_active = True
-
-        # Esperar 45 minutos
-        await asyncio.sleep(2700)
-
-        # Reverter o efeito
-        embed = discord.Embed(
-            title="😱 Pânico Geral Terminada!",
-            description="A chance de infecção voltou ao normal.",
-            color=discord.Color.dark_red()
-        )
-        await channel.send(embed=embed)
-        self.panico_geral_active = False
-        self.current_event = None
-
-    # 🔥 **Novo: Sistema de Drop de Snipers ao Derrotar o Boss**
-
-    async def sniper_drop(self, ctx, user_id):
-        """Sistema de drop para Snipers ao derrotar o boss."""
-        drop_chance = random.randint(1, 100)
-        if drop_chance <= 10:  # 🔥 Drop mais raro: 10% de chance total
-            # Definir as chances individuais
-            sniper_roll = random.randint(1, 100)
-            if sniper_roll <= 5:  # 5% para Sniper Boss
-                sniper_type = "boss"
-            elif sniper_roll <= 25:  # 20% para Sniper Adamanty
-                sniper_type = "adamanty"
-            else:  # 10% para Sniper Emberium
-                sniper_type = "emberium"
-
-            sniper = self.snipers[sniper_type]
-
-            # 🔥 **Adicionar a Sniper ao banco de dados**
-            async with self.bot.pool.acquire() as connection:
-                # Verificar se o usuário já possui uma Sniper
-                existing_sniper = await connection.fetchrow("SELECT * FROM snipers WHERE user_id = $1", user_id)
-                if existing_sniper:
-                    await ctx.send(f"⚠️ Você já possui uma Sniper: **{self.snipers[existing_sniper['sniper_type']]['name']}**.")
-                    return
-                # Inserir a nova Sniper
-                await connection.execute(
-                    "INSERT INTO snipers (user_id, sniper_type) VALUES ($1, $2)",
-                    user_id, sniper_type
-                )
-
-            # 🔥 **Implementar chance do Boss destruir a Sniper**
-            destroy_chance = random.randint(1, 100)
-            if destroy_chance <= 20:  # 20% de chance de o Boss destruir a Sniper
-                async with self.bot.pool.acquire() as connection:
-                    await connection.execute("DELETE FROM snipers WHERE user_id = $1", user_id)
-                await ctx.send(f"😒 **{ctx.author.display_name}**, o Boss não gostou da sua Sniper e a destruiu!")
-
-                return  # Termina a função, já que a Sniper foi destruída
-
-            # 🔥 **Verificar o cooldown de 40 minutos para anúncios**
-            current_time = time.time()
-            if current_time - self.last_sniper_announcement >= 2400:  # 40 minutos = 2400 segundos
-                # 🔥 **Notificar o usuário sobre o drop com mensagem sarcástica**
-                embed = discord.Embed(
-                    title="🎁 Drop de Sniper!",
-                    description=(
-                        f"Parabéns **{ctx.author.display_name}**! Você finalmente conseguiu uma **{sniper['name']}** com a arma **{sniper['weapon']}**.\n"
-                        f"Use o comando `!boss notify_admin` para informar o administrador e receber sua recompensa."
-                    ),
-                    color=discord.Color.purple()
-                )
-                await ctx.send(embed=embed)
-
-                # Atualizar o timestamp da última mensagem
-                self.last_sniper_announcement = current_time
-            else:
-                # Não enviar a mensagem se o cooldown ainda não expirou
-                pass
-        else:
-            # Sem drop de Sniper
-            pass
-
-    # 🔥 **Novo: Comando para Notificar Administrador sobre a Sniper Obtida**
-
-    @boss.command(name="notify_admin")
-    async def boss_notify_admin(self, ctx):
-        """Permite que o jogador notifique o administrador sobre a obtenção de uma Sniper."""
-        user_id = ctx.author.id
-
-        # Verificar se o usuário possui uma Sniper
+    async def ensure_player(self, user_id):
+        """Garante que o usuário tenha uma entrada na tabela 'players'."""
         async with self.bot.pool.acquire() as connection:
-            sniper = await connection.fetchrow("SELECT * FROM snipers WHERE user_id = $1", user_id)
-
-        if not sniper:
-            await ctx.send("⚠️ Você não possui nenhuma Sniper para notificar.")
-            return
-
-        sniper_info = self.snipers[sniper['sniper_type']]
-
-        # Obter o administrador específico pelo ID
-        admin = self.bot.get_user(self.admin_id)
-        if not admin:
-            await ctx.send("⚠️ Administrador não encontrado. Verifique o ID configurado.")
-            return
-
-        # Enviar mensagem privada para o administrador
-        try:
-            embed = discord.Embed(
-                title="📢 Notificação de Sniper Obtida",
-                description=(
-                    f"**{ctx.author.display_name}** obteve uma **{sniper_info['name']}** com a arma **{sniper_info['weapon']}**.\n"
-                    f"Por favor, conceda a recompensa manualmente."
-                ),
-                color=discord.Color.blue()
-            )
-            await admin.send(embed=embed)
-        except discord.Forbidden:
-            await ctx.send("⚠️ Não foi possível enviar uma mensagem privada ao administrador. Verifique as configurações de privacidade dele.")
-
-        await ctx.send("📩 Notificação enviada ao administrador. Aguarde a concessão de sua recompensa.")
-
-    # 🔥 **Novo: Comandos Administrativos para Gerenciar Snipers**
-
-    # 🔥 **Comando: steal_sniper**
-    @boss.command(name="steal_sniper")
-    @commands.check(lambda ctx: ctx.author.id == 470628393272999948)  # 🔥 Novo: Restrição ao admin específico
-    async def steal_sniper(self, ctx, member: discord.Member = None):
-        """Permite que o admin roube a Sniper de um usuário."""
-        if member is None:
-            await ctx.send("⚠️ Por favor, mencione o usuário de quem deseja roubar a Sniper. Exemplo: `!boss steal_sniper @User`")
-            return
-
-        user_id = member.id
-        async with self.bot.pool.acquire() as connection:
-            sniper = await connection.fetchrow("SELECT * FROM snipers WHERE user_id = $1", user_id)
-            if not sniper:
-                await ctx.send(f"⚠️ **{member.display_name}** não possui nenhuma Sniper para ser roubada.")
-                return
-            sniper_type = sniper['sniper_type']
-            sniper_info = self.snipers[sniper_type]
-            # Remover a Sniper do banco de dados
-            await connection.execute("DELETE FROM snipers WHERE user_id = $1", user_id)
-
-        # Notificar o admin sobre o roubo
-        embed = discord.Embed(
-            title="🚨 Sniper Roubada!",
-            description=(
-                f"**{ctx.author.display_name}** roubou a **{sniper_info['name']}** de **{member.display_name}**.\n"
-                f"Arma: **{sniper_info['weapon']}**"
-            ),
-            color=discord.Color.dark_red()
-        )
-        await ctx.send(embed=embed)
-
-        # Notificar o usuário que sua Sniper foi roubada
-        try:
-            user_embed = discord.Embed(
-                title="⚠️ Sniper Roubada!",
-                description=(
-                    f"Sua **{sniper_info['name']}** foi roubada por **{ctx.author.display_name}**.\n"
-                    f"Arma: **{sniper_info['weapon']}**"
-                ),
-                color=discord.Color.dark_red()
-            )
-            await member.send(embed=user_embed)
-        except discord.Forbidden:
-            await ctx.send(f"⚠️ Não foi possível enviar uma mensagem privada para **{member.display_name}**.")
-
-    @steal_sniper.error
-    async def steal_sniper_error(self, ctx, error):
-        if isinstance(error, commands.CheckFailure):
-            await ctx.send("⚠️ Você não possui permissão para usar este comando.")
-        elif isinstance(error, commands.BadArgument):
-            await ctx.send("⚠️ Usuário inválido. Por favor, mencione o usuário corretamente.")
-        else:
-            await ctx.send("⚠️ Ocorreu um erro ao tentar roubar a Sniper.")
-
-    # 🔥 **Comando: destroy_sniper**
-    @boss.command(name="destroy_sniper")
-    @commands.check(lambda ctx: ctx.author.id == 470628393272999948)  # 🔥 Novo: Restrição ao admin específico
-    async def destroy_sniper(self, ctx, member: discord.Member = None):
-        """Permite que o admin destrua a Sniper de um usuário."""
-        if member is None:
-            await ctx.send("⚠️ Por favor, mencione o usuário de quem deseja destruir a Sniper. Exemplo: `!boss destroy_sniper @User`")
-            return
-
-        user_id = member.id
-        async with self.bot.pool.acquire() as connection:
-            sniper = await connection.fetchrow("SELECT * FROM snipers WHERE user_id = $1", user_id)
-            if not sniper:
-                await ctx.send(f"⚠️ **{member.display_name}** não possui nenhuma Sniper para ser destruída.")
-                return
-            sniper_type = sniper['sniper_type']
-            sniper_info = self.snipers[sniper_type]
-            # Remover a Sniper do banco de dados
-            await connection.execute("DELETE FROM snipers WHERE user_id = $1", user_id)
-
-        # Notificar o admin sobre a destruição
-        embed = discord.Embed(
-            title="🔥 Sniper Destruída!",
-            description=(
-                f"**{ctx.author.display_name}** destruiu a **{sniper_info['name']}** de **{member.display_name}**.\n"
-                f"Arma: **{sniper_info['weapon']}**"
-            ),
-            color=discord.Color.dark_red()
-        )
-        await ctx.send(embed=embed)
-
-        # Notificar o usuário que sua Sniper foi destruída
-        try:
-            user_embed = discord.Embed(
-                title="🔥 Sniper Destruída!",
-                description=(
-                    f"Sua **{sniper_info['name']}** foi destruída por **{ctx.author.display_name}**.\n"
-                    f"Arma: **{sniper_info['weapon']}**"
-                ),
-                color=discord.Color.dark_red()
-            )
-            await member.send(embed=user_embed)
-        except discord.Forbidden:
-            await ctx.send(f"⚠️ Não foi possível enviar uma mensagem privada para **{member.display_name}**.")
-
-    @destroy_sniper.error
-    async def destroy_sniper_error(self, ctx, error):
-        if isinstance(error, commands.CheckFailure):
-            await ctx.send("⚠️ Você não possui permissão para usar este comando.")
-        elif isinstance(error, commands.BadArgument):
-            await ctx.send("⚠️ Usuário inválido. Por favor, mencione o usuário corretamente.")
-        else:
-            await ctx.send("⚠️ Ocorreu um erro ao tentar destruir a Sniper.")
+            # Tenta buscar o jogador
+            result = await connection.fetchrow("SELECT * FROM players WHERE user_id = $1", user_id)
+            if not result:
+                # Se não existir, insere com valores padrão
+                await connection.execute("""
+                    INSERT INTO players (user_id, wounds, money, ember, xp, level, infected, damage_debuff)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                """, user_id, 0, 1000, 0, 0, 1, False, False)
+                print(f"Jogador {user_id} adicionado à tabela 'players'.")
 
     async def invocar_boss(self, ctx, user_id):
         """Lógica para invocar o boss."""
@@ -820,7 +246,7 @@ class BossCog(commands.Cog):
         await self.add_money_to_player(user_id, reward_money)
         await self.award_ember(user_id, reward_ember)
 
-        # 🔥 **Novo: Sistema de Drop de Snipers**
+        # 🔥 **Sistema de Drop de Snipers**
         await self.sniper_drop(ctx, user_id)
 
         embed = discord.Embed(
@@ -977,7 +403,255 @@ class BossCog(commands.Cog):
             else:
                 return False, f"🔮 O item **{item['item']}** não possui efeitos definidos."
 
-    # Listener para Quando o Cog Está Pronto
+    # 🔥 **Sistema de Drop de Snipers ao Derrotar o Boss**
+
+    async def sniper_drop(self, ctx, user_id):
+        """Sistema de drop para Snipers ao derrotar o boss."""
+        drop_chance = random.randint(1, 100)
+        if drop_chance <= 10:  # 🔥 Drop mais raro: 10% de chance total
+            # Definir as chances individuais
+            sniper_roll = random.randint(1, 100)
+            if sniper_roll <= 5:  # 5% para Sniper Boss
+                sniper_type = "boss"
+            elif sniper_roll <= 25:  # 20% para Sniper Adamanty
+                sniper_type = "adamanty"
+            else:  # 10% para Sniper Emberium
+                sniper_type = "emberium"
+
+            sniper = self.snipers[sniper_type]
+
+            # 🔥 **Adicionar a Sniper ao banco de dados**
+            async with self.bot.pool.acquire() as connection:
+                # Verificar se o usuário já possui uma Sniper
+                existing_sniper = await connection.fetchrow("SELECT * FROM snipers WHERE user_id = $1", user_id)
+                if existing_sniper:
+                    await ctx.send(f"⚠️ Você já possui uma Sniper: **{self.snipers[existing_sniper['sniper_type']]['name']}**.")
+                    return
+                # Inserir a nova Sniper
+                await connection.execute(
+                    "INSERT INTO snipers (user_id, sniper_type) VALUES ($1, $2)",
+                    user_id, sniper_type
+                )
+
+            # 🔥 **Implementar chance do Boss destruir a Sniper**
+            destroy_chance = random.randint(1, 100)
+            if destroy_chance <= 20:  # 20% de chance de o Boss destruir a Sniper
+                async with self.bot.pool.acquire() as connection:
+                    await connection.execute("DELETE FROM snipers WHERE user_id = $1", user_id)
+                await ctx.send(f"😒 **{ctx.author.display_name}**, o Boss não gostou da sua Sniper e a destruiu!")
+
+                return  # Termina a função, já que a Sniper foi destruída
+
+            # 🔥 **Verificar o cooldown de 40 minutos para anúncios**
+            current_time = time.time()
+            if current_time - self.last_sniper_announcement >= 2400:  # 40 minutos = 2400 segundos
+                # 🔥 **Notificar o usuário sobre o drop com mensagem sarcástica**
+                embed = discord.Embed(
+                    title="🎁 Drop de Sniper!",
+                    description=(
+                        f"Parabéns **{ctx.author.display_name}**! Você finalmente conseguiu uma **{sniper['name']}** com a arma **{sniper['weapon']}**.\n"
+                        f"Use o comando `!boss notify_admin` para informar o administrador e receber sua recompensa."
+                    ),
+                    color=discord.Color.purple()
+                )
+                await ctx.send(embed=embed)
+
+                # Atualizar o timestamp da última mensagem
+                self.last_sniper_announcement = current_time
+            else:
+                # Não enviar a mensagem se o cooldown ainda não expirou
+                pass
+        else:
+            # Sem drop de Sniper
+            pass
+
+    # 🔥 **Comandos Relacionados às Snipers**
+
+    @commands.group(invoke_without_command=True, name="boss")
+    @commands.cooldown(1, 3600, commands.BucketType.user)  # 1 hora de cooldown por usuário
+    async def boss_group(self, ctx):
+        """Comando principal para interagir com o boss."""
+        # Esse método já está definido acima. Evite duplicações.
+
+    @boss_group.command(name="notify_admin")
+    async def boss_notify_admin(self, ctx):
+        """Permite que o jogador notifique o administrador sobre a obtenção de uma Sniper."""
+        user_id = ctx.author.id
+
+        # Verificar se o usuário possui uma Sniper
+        async with self.bot.pool.acquire() as connection:
+            sniper = await connection.fetchrow("SELECT * FROM snipers WHERE user_id = $1", user_id)
+
+        if not sniper:
+            await ctx.send("⚠️ Você não possui nenhuma Sniper para notificar.")
+            return
+
+        sniper_info = self.snipers[sniper['sniper_type']]
+
+        # Obter o administrador específico pelo ID
+        admin = self.bot.get_user(self.admin_id)
+        if not admin:
+            await ctx.send("⚠️ Administrador não encontrado. Verifique o ID configurado.")
+            return
+
+        # Enviar mensagem privada para o administrador
+        try:
+            embed = discord.Embed(
+                title="📢 Notificação de Sniper Obtida",
+                description=(
+                    f"**{ctx.author.display_name}** obteve uma **{sniper_info['name']}** com a arma **{sniper_info['weapon']}**.\n"
+                    f"Por favor, conceda a recompensa manualmente."
+                ),
+                color=discord.Color.blue()
+            )
+            await admin.send(embed=embed)
+        except discord.Forbidden:
+            await ctx.send("⚠️ Não foi possível enviar uma mensagem privada ao administrador. Verifique as configurações de privacidade dele.")
+
+        await ctx.send("📩 Notificação enviada ao administrador. Aguarde a concessão de sua recompensa.")
+
+    @boss_group.command(name="claim_sniper")
+    async def boss_claim_sniper(self, ctx):
+        """Permite que o jogador reivindique a recompensa da Sniper obtida."""
+        user_id = ctx.author.id
+
+        async with self.bot.pool.acquire() as connection:
+            sniper = await connection.fetchrow("SELECT * FROM snipers WHERE user_id = $1", user_id)
+
+        if not sniper:
+            await ctx.send("⚠️ Você não possui nenhuma Sniper para reivindicar.")
+            return
+
+        sniper_info = self.snipers[sniper['sniper_type']]
+
+        # Simular a recompensa (personalize conforme desejado)
+        reward = f"Recompensa especial para **{sniper_info['name']}** com **{sniper_info['weapon']}**!"
+
+        embed = discord.Embed(
+            title="🎉 Recompensa Reivindicada!",
+            description=(
+                f"**{ctx.author.display_name}** reivindicou a recompensa da **{sniper_info['name']}**.\n{reward}"
+            ),
+            color=discord.Color.gold()
+        )
+        await ctx.send(embed=embed)
+
+        # 🔥 **Remover a Sniper do banco de dados após reivindicação**
+        async with self.bot.pool.acquire() as connection:
+            await connection.execute("DELETE FROM snipers WHERE user_id = $1", user_id)
+
+    @boss_notify_admin.error
+    async def boss_notify_admin_error(self, ctx, error):
+        if isinstance(error, commands.CommandError):
+            await ctx.send("⚠️ Ocorreu um erro ao tentar notificar o administrador.")
+
+    @boss_group.command(name="steal_sniper")
+    @commands.check(lambda ctx: ctx.author.id == 470628393272999948)  # 🔥 Novo: Restrição ao admin específico
+    async def steal_sniper(self, ctx, member: discord.Member = None):
+        """Permite que o admin roube a Sniper de um usuário."""
+        if member is None:
+            await ctx.send("⚠️ Por favor, mencione o usuário de quem deseja roubar a Sniper. Exemplo: `!boss steal_sniper @User`")
+            return
+
+        user_id = member.id
+        async with self.bot.pool.acquire() as connection:
+            sniper = await connection.fetchrow("SELECT * FROM snipers WHERE user_id = $1", user_id)
+            if not sniper:
+                await ctx.send(f"⚠️ **{member.display_name}** não possui nenhuma Sniper para ser roubada.")
+                return
+            sniper_type = sniper['sniper_type']
+            sniper_info = self.snipers[sniper_type]
+            # Remover a Sniper do banco de dados
+            await connection.execute("DELETE FROM snipers WHERE user_id = $1", user_id)
+
+        # Notificar o admin sobre o roubo
+        embed = discord.Embed(
+            title="🚨 Sniper Roubada!",
+            description=(
+                f"**{ctx.author.display_name}** roubou a **{sniper_info['name']}** de **{member.display_name}**.\n"
+                f"Arma: **{sniper_info['weapon']}**"
+            ),
+            color=discord.Color.dark_red()
+        )
+        await ctx.send(embed=embed)
+
+        # Notificar o usuário que sua Sniper foi roubada
+        try:
+            user_embed = discord.Embed(
+                title="⚠️ Sniper Roubada!",
+                description=(
+                    f"Sua **{sniper_info['name']}** foi roubada por **{ctx.author.display_name}**.\n"
+                    f"Arma: **{sniper_info['weapon']}**"
+                ),
+                color=discord.Color.dark_red()
+            )
+            await member.send(embed=user_embed)
+        except discord.Forbidden:
+            await ctx.send(f"⚠️ Não foi possível enviar uma mensagem privada para **{member.display_name}**.")
+
+    @steal_sniper.error
+    async def steal_sniper_error(self, ctx, error):
+        if isinstance(error, commands.CheckFailure):
+            await ctx.send("⚠️ Você não possui permissão para usar este comando.")
+        elif isinstance(error, commands.BadArgument):
+            await ctx.send("⚠️ Usuário inválido. Por favor, mencione o usuário corretamente.")
+        else:
+            await ctx.send("⚠️ Ocorreu um erro ao tentar roubar a Sniper.")
+
+    @boss_group.command(name="destroy_sniper")
+    @commands.check(lambda ctx: ctx.author.id == 470628393272999948)  # 🔥 Novo: Restrição ao admin específico
+    async def destroy_sniper(self, ctx, member: discord.Member = None):
+        """Permite que o admin destrua a Sniper de um usuário."""
+        if member is None:
+            await ctx.send("⚠️ Por favor, mencione o usuário de quem deseja destruir a Sniper. Exemplo: `!boss destroy_sniper @User`")
+            return
+
+        user_id = member.id
+        async with self.bot.pool.acquire() as connection:
+            sniper = await connection.fetchrow("SELECT * FROM snipers WHERE user_id = $1", user_id)
+            if not sniper:
+                await ctx.send(f"⚠️ **{member.display_name}** não possui nenhuma Sniper para ser destruída.")
+                return
+            sniper_type = sniper['sniper_type']
+            sniper_info = self.snipers[sniper_type]
+            # Remover a Sniper do banco de dados
+            await connection.execute("DELETE FROM snipers WHERE user_id = $1", user_id)
+
+        # Notificar o admin sobre a destruição
+        embed = discord.Embed(
+            title="🔥 Sniper Destruída!",
+            description=(
+                f"**{ctx.author.display_name}** destruiu a **{sniper_info['name']}** de **{member.display_name}**.\n"
+                f"Arma: **{sniper_info['weapon']}**"
+            ),
+            color=discord.Color.dark_red()
+        )
+        await ctx.send(embed=embed)
+
+        # Notificar o usuário que sua Sniper foi destruída
+        try:
+            user_embed = discord.Embed(
+                title="🔥 Sniper Destruída!",
+                description=(
+                    f"Sua **{sniper_info['name']}** foi destruída por **{ctx.author.display_name}**.\n"
+                    f"Arma: **{sniper_info['weapon']}**"
+                ),
+                color=discord.Color.dark_red()
+            )
+            await member.send(embed=user_embed)
+        except discord.Forbidden:
+            await ctx.send(f"⚠️ Não foi possível enviar uma mensagem privada para **{member.display_name}**.")
+
+    @destroy_sniper.error
+    async def destroy_sniper_error(self, ctx, error):
+        if isinstance(error, commands.CheckFailure):
+            await ctx.send("⚠️ Você não possui permissão para usar este comando.")
+        elif isinstance(error, commands.BadArgument):
+            await ctx.send("⚠️ Usuário inválido. Por favor, mencione o usuário corretamente.")
+        else:
+            await ctx.send("⚠️ Ocorreu um erro ao tentar destruir a Sniper.")
+
+    # 🔥 **Listener para Quando o Cog Está Pronto**
 
     @commands.Cog.listener()
     async def on_ready(self):
