@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands, tasks
 import random
 import time
+import asyncio  # Certifique-se de que asyncio está importado
 
 class BossCog(commands.Cog):
     def __init__(self, bot):
@@ -74,5 +75,9 @@ class BossCog(commands.Cog):
         await self.bot.wait_until_ready()
 
 # Função para configurar o cog
-def setup(bot):
-    bot.add_cog(BossCog(bot))  # Adiciona o cog de forma síncrona
+async def setup(bot):
+    await bot.add_cog(BossCog(bot))  # Adiciona o cog de forma assíncrona
+
+# Função para carregar o cog
+def load_cog(bot):
+    asyncio.run_coroutine_threadsafe(setup(bot), bot.loop)  # Adiciona o cog de forma assíncrona
