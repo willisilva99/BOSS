@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands
 import random
-import time
 
 class BossCog(commands.Cog):
     def __init__(self, bot):
@@ -11,11 +10,11 @@ class BossCog(commands.Cog):
         self.last_attack_time = {}
         self.snipers = ["🔫 SNIPER BOSS RARA", "🔥 SNIPER EMBERIUM", "💎 SNIPER DAMANTY"]
         
-        # Lista de Bosses com diferentes características
+        # Lista de Bosses com diferentes características e HP elevado para mais dificuldade
         self.bosses = [
-            {"name": "👹 Mega Boss", "hp": 1000, "attack_chance": 30, "damage_range": (20, 60)},
-            {"name": "👻 Boss das Sombras", "hp": 1200, "attack_chance": 40, "damage_range": (30, 80)},
-            {"name": "💀 Gigante Emberium", "hp": 1500, "attack_chance": 50, "damage_range": (50, 100)},
+            {"name": "👹 Mega Boss", "hp": 5000, "attack_chance": 30, "damage_range": (50, 150)},
+            {"name": "👻 Boss das Sombras", "hp": 7000, "attack_chance": 40, "damage_range": (60, 200)},
+            {"name": "💀 Gigante Emberium", "hp": 10000, "attack_chance": 50, "damage_range": (80, 250)},
         ]
 
     async def ensure_player(self, user_id):
@@ -24,11 +23,11 @@ class BossCog(commands.Cog):
 
     def generate_sniper_drop(self):
         """Define uma premiação rara."""
-        drop_chance = random.randint(1, 100)
-        if drop_chance <= 5:  # Chance de dropar sniper rara (5%)
+        drop_chance = random.randint(1, 1000)  # Tornar o drop muito raro
+        if drop_chance <= 2:  # Chance de 0,2% de dropar sniper rara
             selected_sniper = random.choice(self.snipers)
             destroy_chance = random.randint(1, 100)
-            if destroy_chance <= 25:  # 25% de chance do boss quebrar o prêmio
+            if destroy_chance <= 30:  # 30% de chance do boss quebrar o prêmio
                 return f"😖 O boss quebrou a {selected_sniper}!"
             else:
                 return f"🎉 Parabéns! Você ganhou uma {selected_sniper}!"
@@ -45,36 +44,15 @@ class BossCog(commands.Cog):
             self.current_boss = random.choice(self.bosses).copy()
             embed = discord.Embed(
                 title="⚔️ Boss Invocado!",
-                description=f"{display_name} invocou o {self.current_boss['name']} com {self.current_boss['hp']} HP!",
+                description=f"{display_name} invocou o {self.current_boss['name']} com {self.current_boss['hp']} HP!\n"
+                            "Todos devem atacá-lo para derrotá-lo!",
                 color=discord.Color.red()
             )
             await ctx.send(embed=embed)
-
-            # Permite que o invocador ataque imediatamente sem cooldown
-            damage = random.randint(50, 150)
-            self.current_boss["hp"] -= damage
-            embed = discord.Embed(
-                title="🎯 Ataque Inicial!",
-                description=f"{display_name} atacou o {self.current_boss['name']} causando {damage} de dano!\n"
-                            f"**HP restante do boss**: {self.current_boss['hp']}",
-                color=discord.Color.orange()
-            )
-            await ctx.send(embed=embed)
-
-            if self.current_boss["hp"] <= 0:
-                # Boss derrotado imediatamente
-                reward_message = self.generate_sniper_drop()
-                embed = discord.Embed(
-                    title="🏆 Boss Derrotado!",
-                    description=reward_message,
-                    color=discord.Color.green()
-                )
-                await ctx.send(embed=embed)
-                self.current_boss = None  # Reinicia o boss para a próxima invocação
         else:
-            # Caso o boss já tenha sido invocado, aplica o cooldown padrão
+            # Caso o boss já tenha sido invocado, aplica o cooldown padrão para o atacante
             if user_id not in self.last_attack_time or (ctx.message.created_at.timestamp() - self.last_attack_time[user_id]) >= self.cooldown_time:
-                damage = random.randint(50, 150)
+                damage = random.randint(50, 200)
                 self.current_boss["hp"] -= damage
                 self.last_attack_time[user_id] = ctx.message.created_at.timestamp()
                 embed = discord.Embed(
@@ -96,7 +74,7 @@ class BossCog(commands.Cog):
                     await ctx.send(embed=embed)
 
                 if self.current_boss["hp"] <= 0:
-                    # Boss derrotado
+                    # Boss derrotado por todos os jogadores
                     reward_message = self.generate_sniper_drop()
                     embed = discord.Embed(
                         title="🏆 Boss Derrotado!",
