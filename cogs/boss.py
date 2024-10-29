@@ -13,14 +13,14 @@ class BossCog(commands.Cog):
         # URLs das imagens do Gigante Emberium
         self.boss_images = {
             "Gigante Emberium": {
-                "default": "https://discord.com/channels/1186390028990025820/1300796026378256484/1300796094607003773",
-                "attack": "https://discord.com/channels/1186390028990025820/1300796026378256484/1300796526179782758",
-                "attack_player": "https://discord.com/channels/1186390028990025820/1300796026378256484/1300796853016723528",
-                "flee": "https://discord.com/channels/1186390028990025820/1300796026378256484/1300801431405727795",
-                "defeated": "https://discord.com/channels/1186390028990025820/1300796026378256484/1300801821169942568"
+                "default": "https://cdn.discordapp.com/attachments/1300796026378256484/1300796094607003773/image.png",  # Gigante Emberium
+                "attack": "https://cdn.discordapp.com/attachments/1300796026378256484/1300796526179782758/image.png",  # Ataque Boss
+                "attack_player": "https://cdn.discordapp.com/attachments/1300796026378256484/1300796853016723528/image.png",  # Boss Atacando Player
+                "flee": "https://cdn.discordapp.com/attachments/1300796026378256484/1300801431405727795/image.png",  # Boss Fugindo
+                "defeated": "https://cdn.discordapp.com/attachments/1300796026378256484/1300801821169942568/image.png"  # Boss Derrotado
             }
         }
-        
+
         # Lista de Bosses com diferentes características e HP elevado para mais dificuldade
         self.bosses = [
             {"name": "👹 Mega Boss", "hp": 5000, "attack_chance": 30, "damage_range": (50, 150)},
@@ -136,23 +136,4 @@ class BossCog(commands.Cog):
                         )
                         embed.set_image(url=self.boss_images["Gigante Emberium"]["flee"])  # Imagem do boss fugindo
                         await ctx.send(embed=embed)
-                        self.current_boss = None  # Reinicia o boss para próxima invocação
-            else:
-                # Usuário está em cooldown
-                time_remaining = int(self.cooldown_time - (ctx.message.created_at.timestamp() - self.last_attack_time[user_id]))
-                minutes, seconds = divmod(time_remaining, 60)
-                embed = discord.Embed(
-                    title="⏳ Cooldown Ativo",
-                    description=f"{display_name}, você precisa esperar mais **{minutes} minutos e {seconds} segundos** para atacar o boss novamente!",
-                    color=discord.Color.blue()
-                )
-                await ctx.send(embed=embed)
-
-    @commands.Cog.listener()
-    async def on_ready(self):
-        """Evento chamado quando o bot está pronto."""
-        print("BossCog está pronto!")
-
-# Função de setup para adicionar o cog ao bot
-async def setup(bot):
-    await bot.add_cog(BossCog(bot))
+                        self.current_boss = None  # Reinicia
