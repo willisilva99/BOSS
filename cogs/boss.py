@@ -75,9 +75,5 @@ class BossCog(commands.Cog):
         await self.bot.wait_until_ready()
 
 # Função para configurar o cog
-async def setup(bot):
-    await bot.add_cog(BossCog(bot))  # Adiciona o cog de forma assíncrona
-
-# Chame esta função ao carregar o cog
 def setup(bot):
-    asyncio.create_task(setup(bot))  # Inicia a função setup de forma assíncrona
+    bot.add_cog(BossCog(bot))  # Adiciona o cog de forma síncrona
