@@ -20,7 +20,7 @@ class RankCog(commands.Cog):
         # URLs das imagens para cada ranking
         self.rank_images = {
             "damage": "https://i.postimg.cc/MTJwRfzg/DALL-E-2024-10-29-15-12-42-Create-an-apocalyptic-themed-background-image-titled-Top-Rank-Dano-N.webp",
-            "kill": "https://i.postimg.cc/y85s1rt1/DALL-E-2024-10-29-15-07-02-Create-an-apocalyptic-themed-background-image-titled-Top-Rank-Kill-Nova-Era.webp",
+            "kill": "https://i.postimg.cc/y85s1rt1/DALL-E-2024-10-29-15-07-02-Create-an-apocalyptic-background-image-titled-Top-Rank-Kill-Nova-Era.webp",
             "sniper": "https://i.postimg.cc/R0H9NLxc/DALL-E-2024-10-29-15-20-36-Create-an-apocalyptic-themed-background-image-titled-Top-Sniper-Nova.webp"
         }
 
@@ -51,7 +51,8 @@ class RankCog(commands.Cog):
                     user_id BIGINT PRIMARY KEY,
                     total_damage INTEGER DEFAULT 0,
                     kills INTEGER DEFAULT 0,
-                    snipers INTEGER DEFAULT 0
+                    snipers INTEGER DEFAULT 0,
+                    total_rewards INTEGER DEFAULT 0  -- Adiciona coluna para prêmios
                 )
             """)
 
@@ -91,6 +92,11 @@ class RankCog(commands.Cog):
         self.sniper_rank[user_id] += 1
         asyncio.create_task(self.update_database(user_id, "snipers", 1))
         print(f"Registro de sniper: {user_id} ganhou uma sniper.")
+
+    def record_reward(self, user_id, reward_value):
+        """Registra um prêmio ganho por um usuário e atualiza o banco de dados."""
+        asyncio.create_task(self.update_database(user_id, "total_rewards", reward_value))
+        print(f"Registro de prêmio: {user_id} ganhou {reward_value} de prêmio.")
 
     @commands.Cog.listener()
     async def on_ready(self):
