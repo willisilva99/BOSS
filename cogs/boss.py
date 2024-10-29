@@ -8,7 +8,7 @@ class BossCog(commands.Cog):
         self.current_boss = None
         self.cooldown_time = 7200
         self.last_attack_time = {}
-        self.snipers = ["🔫 SNIPER BOSS RARA", "🔥 SNIPER EMBERIUM", "💎 SNIPER DAMANTY"]
+        self.snipers = ["SNIPER BOSS RARA", "SNIPER EMBERIUM", "SNIPER DAMANTY"]
         self.damage_data = {}
         self.kills_data = {}
 
@@ -34,6 +34,22 @@ class BossCog(commands.Cog):
                 "attack_player": "https://i.postimg.cc/QMNkMFrJ/DALL-E-2024-10-11-26-A-dramatic-fantasy-scene-depicting-the-powerful-zombie-boss-named-Mega.webp",
                 "flee": "https://i.postimg.cc/2S77m4g5/DALL-E-2024-10-29-10-13-34-A-dramatic-fantasy-scene-depicting-the-powerful-zombie-boss-named-Mega.webp",
                 "defeated": "https://i.postimg.cc/KvL5pXNB/DALL-E-2024-10-29-10-14-38-A-dramatic-fantasy-scene-depicting-the-powerful-zombie-boss-named-Mega.webp"
+            }
+        }
+
+        # URLs das imagens das armas sniper
+        self.sniper_images = {
+            "SNIPER BOSS RARA": {
+                "default": "https://i.postimg.cc/50hC80DG/DALL-E-2024-10-29-10-21-27-A-rugged-survivor-in-an-apocalyptic-setting-holding-the-Emberium-Snip.webp",
+                "broken": "https://i.postimg.cc/mDz9cMpC/DALL-E-2024-10-23-18-A-rugged-survivor-in-an-apocalyptic-setting-holding-a-completely-shatt.webp"
+            },
+            "SNIPER EMBERIUM": {
+                "default": "https://i.postimg.cc/nh2BNnQj/DALL-E-2024-10-29-10-24-23-A-rugged-survivor-in-an-apocalyptic-setting-confidently-wielding-the.webp",
+                "broken": "https://i.postimg.cc/1zzwQbpW/DALL-E-2024-10-29-10-31-58-A-rugged-survivor-in-an-apocalyptic-setting-holding-a-Sniper-Boss-Rar.webp"
+            },
+            "SNIPER DAMANTY": {
+                "default": "https://i.postimg.cc/qv42mNgH/DALL-E-2024-10-29-10-32-54-A-rugged-survivor-in-an-apocalyptic-setting-confidently-holding-the-S.webp",
+                "broken": "https://i.postimg.cc/MGrRKt5z/DALL-E-2024-10-29-10-33-40-A-rugged-survivor-in-an-apocalyptic-setting-holding-a-Sniper-Damanty.webp"
             }
         }
 
@@ -105,14 +121,15 @@ class BossCog(commands.Cog):
             await self.grant_role(ctx, user, roles[position], position + 1)
 
     def generate_sniper_drop(self):
-        return f"Parabéns! Você recebeu: {random.choice(self.snipers)}"
+        sniper_name = random.choice(self.snipers)
+        sniper_image_url = self.sniper_images[sniper_name]["default"]
+        return sniper_name, sniper_image_url
 
     @commands.command(name="boss")
     async def boss_attack(self, ctx):
-        allowed_channels = [1300853285858578543, 1300853676784484484, 1300854639658270761]
-        if ctx.channel.id not in allowed_channels:
-            allowed_channels_str = ", ".join([f"<#{channel_id}>" for channel_id in allowed_channels])
-            await ctx.send(f"⚠️ Este comando só pode ser usado nos canais: {allowed_channels_str}.")
+        # Verifica se o comando foi enviado no canal correto
+        if ctx.channel.id != 1299092242673303552:
+            await ctx.send("⚠️ Este comando só pode ser usado no canal <#1299092242673303552>.")
             return
 
         user_id = ctx.author.id
@@ -167,14 +184,13 @@ class BossCog(commands.Cog):
                     await ctx.send(embed=embed)
 
                 if self.current_boss["hp"] <= 0:
-                    reward_message = self.generate_sniper_drop()
+                    sniper_name, sniper_image_url = self.generate_sniper_drop()
                     embed = discord.Embed(
                         title="🏆 Boss Derrotado!",
-                        description=f"{self.boss_dialogues[boss_name]['defeat']}\n{reward_message}",
+                        description=f"{self.boss_dialogues[boss_name]['defeat']}\nParabéns! Você recebeu: {sniper_name}",
                         color=discord.Color.green()
                     )
-                    if boss_image_key:
-                        embed.set_image(url=self.boss_images[boss_image_key]["defeated"])
+                    embed.set_image(url=sniper_image_url)
                     await ctx.send(embed=embed)
                     self.current_boss = None
                 elif await self.attempt_boss_escape():
