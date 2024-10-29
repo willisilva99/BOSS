@@ -19,7 +19,7 @@ bot = commands.Bot(command_prefix="n!", intents=intents)
 # Lista de cogs
 cogs = [
     "boss",  # Cog do boss com funcionalidades avançadas
-    "rank",  # Cog de ranking dos jogadores
+
 ]
 
 # Mensagens de status aleatórias para dar mais imersão ao bot
