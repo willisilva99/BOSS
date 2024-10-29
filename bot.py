@@ -54,14 +54,65 @@ async def setup_database():
                     money INTEGER DEFAULT 1000,
                     xp INTEGER DEFAULT 0,
                     level INTEGER DEFAULT 1,
-                    infected BOOLEAN DEFAULT FALSE
+                    infected BOOLEAN DEFAULT FALSE,
+                    damage_debuff BOOLEAN DEFAULT FALSE
                 );
             """)
+
             await connection.execute("""
                 CREATE TABLE IF NOT EXISTS inventory (
                     id SERIAL PRIMARY KEY,
                     user_id BIGINT REFERENCES players(user_id) ON DELETE CASCADE,
                     item TEXT NOT NULL
+                );
+            """)
+
+            # Tabela para Classes
+            await connection.execute("""
+                CREATE TABLE IF NOT EXISTS classes (
+                    class_id SERIAL PRIMARY KEY,
+                    name TEXT UNIQUE NOT NULL,
+                    description TEXT
+                );
+            """)
+
+            # Tabela para Associar Jogadores às Classes
+            await connection.execute("""
+                CREATE TABLE IF NOT EXISTS player_classes (
+                    user_id BIGINT REFERENCES players(user_id) ON DELETE CASCADE,
+                    class_id INTEGER REFERENCES classes(class_id) ON DELETE SET NULL,
+                    PRIMARY KEY (user_id)
+                );
+            """)
+
+            # Tabela para Itens da Loja
+            await connection.execute("""
+                CREATE TABLE IF NOT EXISTS shop_items (
+                    item_id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    cost INTEGER NOT NULL,
+                    rarity TEXT CHECK (rarity IN ('comum', 'raro', 'épico')) NOT NULL
+                );
+            """)
+
+            # Tabela para Debuffs (Caso queira gerenciar múltiplos debuffs)
+            await connection.execute("""
+                CREATE TABLE IF NOT EXISTS debuffs (
+                    debuff_id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    duration INTEGER NOT NULL  -- duração em segundos
+                );
+            """)
+
+            # Tabela para Gerenciar Debuffs Aplicados aos Jogadores
+            await connection.execute("""
+                CREATE TABLE IF NOT EXISTS player_debuffs (
+                    user_id BIGINT REFERENCES players(user_id) ON DELETE CASCADE,
+                    debuff_id INTEGER REFERENCES debuffs(debuff_id) ON DELETE CASCADE,
+                    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (user_id, debuff_id)
                 );
             """)
     except Exception as e:
