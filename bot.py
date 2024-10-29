@@ -329,3 +329,4 @@ async def on_ready():
 
 asyncio.run(setup(bot))
 bot.run(os.getenv("TOKEN"))
+
