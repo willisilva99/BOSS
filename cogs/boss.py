@@ -77,6 +77,11 @@ class BossCog(commands.Cog):
             "escape": ["🏃‍♂️ Vocês acham que me prenderão? Eu sou o apocalipse!"]
         }
 
+    async def attempt_boss_escape(self):
+        """Simula a chance de fuga do boss."""
+        escape_chance = 20  # Exemplo: 20% de chance de o boss fugir
+        return random.randint(1, 100) <= escape_chance
+
     # Método para conceder cargo ao jogador e remover se necessário
     async def grant_role(self, ctx, user, role_name):
         role = discord.utils.get(ctx.guild.roles, name=role_name)
@@ -87,7 +92,6 @@ class BossCog(commands.Cog):
             await user.add_roles(role)
             await ctx.send(f"🎉 {user.mention} agora possui o cargo **{role_name}** por estar entre os melhores! 🏆")
 
-    # Funções substitutas para rank - mantendo funcionalidades originais
     def record_damage(self, player_id, damage):
         if player_id not in self.damage_data:
             self.damage_data[player_id] = 0
@@ -101,7 +105,6 @@ class BossCog(commands.Cog):
         sorted_kills = sorted(self.kills_data.items(), key=lambda x: x[1], reverse=True)
         return [player_id for player_id, _ in sorted_kills[:limit]]
 
-    # Método para atualizar cargos no top 3 em dano e mortes
     async def update_roles(self, ctx):
         top_damage_players = self.get_top_players_by_damage(limit=3)
         top_kills_players = self.get_top_players_by_kills(limit=3)
@@ -114,7 +117,6 @@ class BossCog(commands.Cog):
             user = await self.bot.fetch_user(player_id)
             await self.grant_role(ctx, user, "Top Killer")
 
-    # Comando para atacar o boss
     @commands.command(name="boss")
     async def boss_attack(self, ctx):
         if ctx.channel.id != 1299092242673303552:
@@ -144,7 +146,6 @@ class BossCog(commands.Cog):
                 damage = random.randint(50, 200)
                 self.current_boss["hp"] -= damage
 
-                # Registrar o dano no novo método record_damage
                 self.record_damage(user_id, damage)
 
                 self.last_attack_time[user_id] = ctx.message.created_at.timestamp()
@@ -160,10 +161,8 @@ class BossCog(commands.Cog):
                     embed.set_image(url=self.boss_images[boss_image_key]["attack"])
                 await ctx.send(embed=embed)
 
-                # Atualizar os cargos após o ataque
                 await self.update_roles(ctx)
 
-                # Chance do boss contra-atacar
                 if random.randint(1, 100) <= self.current_boss["attack_chance"]:
                     boss_damage = random.randint(*self.current_boss["damage_range"])
                     embed = discord.Embed(
@@ -185,7 +184,7 @@ class BossCog(commands.Cog):
                     if boss_image_key:
                         embed.set_image(url=self.boss_images[boss_image_key]["defeated"])
                     await ctx.send(embed=embed)
-                    self.current_boss = None  # Reinicia o boss para próxima invocação
+                    self.current_boss = None
                 elif await self.attempt_boss_escape():
                     embed = discord.Embed(
                         title="🏃‍♂️ O Boss Fugiu!",
@@ -196,7 +195,7 @@ class BossCog(commands.Cog):
                     if boss_image_key:
                         embed.set_image(url=self.boss_images[boss_image_key]["flee"])
                     await ctx.send(embed=embed)
-                    self.current_boss = None  # Reinicia o boss para próxima invocação
+                    self.current_boss = None
             else:
                 time_remaining = int(self.cooldown_time - (ctx.message.created_at.timestamp() - self.last_attack_time[user_id]))
                 minutes, seconds = divmod(time_remaining, 60)
@@ -211,6 +210,5 @@ class BossCog(commands.Cog):
     async def on_ready(self):
         print("BossCog está pronto!")
 
-# Função de setup para adicionar o cog ao bot
 async def setup(bot):
     await bot.add_cog(BossCog(bot))
