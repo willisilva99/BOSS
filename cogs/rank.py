@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands, tasks
 from collections import defaultdict
 import asyncio
+import random
 
 class RankCog(commands.Cog):
     def __init__(self, bot):
@@ -23,6 +24,9 @@ class RankCog(commands.Cog):
             "kill": [1300853285858578543, 1300853676784484484, 1300854136648241235],
             "sniper": [1300854639658270761, 1300854891350327438, 1300855252928434288]
         }
+
+        # Lista de emojis de reação com tema apocalíptico
+        self.reaction_emojis = ["🔥", "💀", "⚔️", "☠️", "⚡", "🔫", "🎯", "🪓", "💣"]
 
         # ID do canal onde o rank será exibido
         self.channel_id = 1186636197934661632
@@ -58,7 +62,7 @@ class RankCog(commands.Cog):
         await self.send_rank("sniper", "🔫 **Top 5 Colecionadores de Snipers**", "🎯", "Snipers Conquistadas")
 
     async def send_rank(self, rank_type, title, emoji, description):
-        """Envia o ranking no canal especificado."""
+        """Envia o ranking no canal especificado e adiciona uma reação apocalíptica."""
         channel = self.bot.get_channel(self.channel_id)
         if not channel:
             print("Erro: Canal de classificação não encontrado.")
@@ -85,7 +89,11 @@ class RankCog(commands.Cog):
                 inline=False
             )
 
-        await channel.send(embed=embed)
+        message = await channel.send(embed=embed)
+
+        # Adiciona uma reação apocalíptica aleatória ao embed enviado
+        reaction = random.choice(self.reaction_emojis)
+        await message.add_reaction(reaction)
 
     @tasks.loop(hours=3)
     async def update_roles(self):
