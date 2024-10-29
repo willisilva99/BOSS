@@ -6,7 +6,7 @@ import time
 class BossCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.cooldown_time = 3600  # 1 hora de cooldown global
+        self.cooldown_time = 3600  # 1 hora de cooldown por usuário
         self.current_boss = None
         self.boss_attack_task.start()
         self.rank_update.start()
@@ -212,7 +212,7 @@ class BossCog(commands.Cog):
     async def boss_use_item(self, ctx, *, item_name: str = None):
         """Permite que o jogador use um item do inventário."""
         if not item_name:
-            await ctx.send("⚠️ Por favor, especifique o item que deseja usar. Exemplo: `n!boss use Remédio Antiviral`")
+            await ctx.send("⚠️ Por favor, especifique o item que deseja usar. Exemplo: `!boss use Remédio Antiviral`")
             return
 
         user_id = ctx.author.id
@@ -228,6 +228,9 @@ class BossCog(commands.Cog):
             top_players = await connection.fetch(
                 "SELECT user_id, xp FROM players ORDER BY xp DESC LIMIT 10"
             )
+        if not top_players:
+            await ctx.send("🏆 Ainda não há jogadores no ranking.")
+            return
         ranking = "\n".join([f"<@{p['user_id']}> - {p['xp']} XP" for p in top_players])
         embed = discord.Embed(
             title="🏆 Ranking de Sobreviventes",
@@ -247,28 +250,7 @@ class BossCog(commands.Cog):
         embed.add_field(name="!boss status", value="Exibe o status atual do boss.", inline=False)
         embed.add_field(name="!boss stats", value="Exibe suas estatísticas pessoais.", inline=False)
         embed.add_field(name="!boss inventory", value="Exibe seu inventário de itens.", inline=False)
-        embed.add_field(name="!boss use <item>", value="Usa um item do seu inventário. Exemplo: `n!boss use Remédio Antiviral`", inline=False)
-        embed.add_field(name="!boss rank", value="Exibe o ranking dos melhores jogadores.", inline=False)
-        embed.add_field(name="!boss help", value="Exibe esta mensagem de ajuda.", inline=False)
-        await ctx.send(embed=embed)
-
-    @commands.command(name="rank")
-    async def rank_command(self, ctx):
-        """Exibe o ranking dos melhores jogadores."""
-        await self.boss_rank(ctx)
-
-    @commands.command(name="help")
-    async def help_command(self, ctx):
-        """Exibe a ajuda dos comandos do bot."""
-        embed = discord.Embed(
-            title="📜 Ajuda dos Comandos do Bot",
-            color=discord.Color.gold()
-        )
-        embed.add_field(name="!boss", value="Invoca ou ataca o boss. Use no canal designado para combates.", inline=False)
-        embed.add_field(name="!boss status", value="Exibe o status atual do boss.", inline=False)
-        embed.add_field(name="!boss stats", value="Exibe suas estatísticas pessoais.", inline=False)
-        embed.add_field(name="!boss inventory", value="Exibe seu inventário de itens.", inline=False)
-        embed.add_field(name="!boss use <item>", value="Usa um item do seu inventário. Exemplo: `n!boss use Remédio Antiviral`", inline=False)
+        embed.add_field(name="!boss use <item>", value="Usa um item do seu inventário. Exemplo: `!boss use Remédio Antiviral`", inline=False)
         embed.add_field(name="!boss rank", value="Exibe o ranking dos melhores jogadores.", inline=False)
         embed.add_field(name="!boss help", value="Exibe esta mensagem de ajuda.", inline=False)
         await ctx.send(embed=embed)
@@ -555,6 +537,9 @@ class BossCog(commands.Cog):
             top_players = await connection.fetch(
                 "SELECT user_id, xp FROM players ORDER BY xp DESC LIMIT 10"
             )
+        if not top_players:
+            await self.bot.get_channel(self.status_channel_id).send("🏆 Ainda não há jogadores no ranking.")
+            return
         ranking = "\n".join([f"<@{p['user_id']}> - {p['xp']} XP" for p in top_players])
         embed = discord.Embed(
             title="🏆 Ranking de Sobreviventes",
@@ -586,26 +571,27 @@ class BossCog(commands.Cog):
         """Antes de qualquer comando do boss, garante que o perfil do jogador existe."""
         await self.ensure_player(ctx.author.id)
 
-    @rank_update.before_loop
-    async def before_rank_update(self):
-        await self.bot.wait_until_ready()
-
     @boss_attack_task.before_loop
     async def before_boss_attack_task(self):
+        await self.bot.wait_until_ready()
+
+    @rank_update.before_loop
+    async def before_rank_update(self):
         await self.bot.wait_until_ready()
 
     @change_status.before_loop
     async def before_change_status(self):
         await self.bot.wait_until_ready()
 
-    async def setup(self, ctx):
+    async def setup(self, bot):
         """Configurações iniciais do cog."""
-        await self.ensure_player(ctx.author.id)
+        await bot.add_cog(BossCog(bot))
 
     @commands.Cog.listener()
     async def on_ready(self):
         """Evento que é chamado quando o bot está pronto."""
         print(f"Cog '{self.__class__.__name__}' está pronto!")
 
+# Configuração do cog
 async def setup(bot):
     await bot.add_cog(BossCog(bot))
