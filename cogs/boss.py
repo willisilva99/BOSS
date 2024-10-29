@@ -31,7 +31,7 @@ class BossCog(commands.Cog):
             "Mega Boss": {
                 "default": "https://i.postimg.cc/W3CMSSq5/DALL-E-2024-10-29-09-49-34-A-powerful-fantasy-character-design-of-a-zombie-boss-named-Mega-Boss.webp",
                 "attack": "https://i.postimg.cc/FR7yjwzf/DALL-E-2024-10-29-10-06-58-A-dramatic-fantasy-scene-depicting-a-brave-survivor-attacking-the-power.webp",
-                "attack_player": "https://i.postimg.cc/QMNkMFrJ/DALL-E-2024-10-29-10-11-26-A-dramatic-fantasy-scene-depicting-the-powerful-zombie-boss-named-Mega.webp",
+                "attack_player": "https://i.postimg.cc/QMNkMFrJ/DALL-E-2024-10-11-26-A-dramatic-fantasy-scene-depicting-the-powerful-zombie-boss-named-Mega.webp",
                 "flee": "https://i.postimg.cc/2S77m4g5/DALL-E-2024-10-29-10-13-34-A-dramatic-fantasy-scene-depicting-the-powerful-zombie-boss-named-Mega.webp",
                 "defeated": "https://i.postimg.cc/KvL5pXNB/DALL-E-2024-10-29-10-14-38-A-dramatic-fantasy-scene-depicting-the-powerful-zombie-boss-named-Mega.webp"
             }
@@ -90,26 +90,32 @@ class BossCog(commands.Cog):
             ]
         }
 
-    async def attempt_boss_escape(self):
-        """Verifica se o boss consegue fugir."""
-        escape_chance = random.randint(1, 100)
-        return escape_chance <= 15  # 15% de chance de fuga
+    # Método para conceder cargo ao jogador e remover se necessário
+    async def grant_role(self, ctx, user, role_name):
+        role = discord.utils.get(ctx.guild.roles, name=role_name)
+        if role:
+            for member in role.members:
+                if member != user:
+                    await member.remove_roles(role)
+            await user.add_roles(role)
+            await ctx.send(f"🎉 {user.mention} agora possui o cargo **{role_name}** por estar entre os melhores! 🏆")
 
-    def generate_sniper_drop(self):
-        """Define uma premiação rara."""
-        drop_chance = random.randint(1, 1000)  # Tornar o drop muito raro
-        if drop_chance <= 2:  # Chance de 0,2% de dropar sniper rara
-            selected_sniper = random.choice(self.snipers)
-            destroy_chance = random.randint(1, 100)
-            if destroy_chance <= 30:  # 30% de chance do boss quebrar o prêmio
-                return f"😖 O boss quebrou a {selected_sniper}!"
-            else:
-                return f"🎉 Parabéns! Você ganhou uma {selected_sniper}!"
-        return "😢 O boss não deixou nenhuma sniper desta vez."
+    # Método para atualizar cargos no top 3 em dano e mortes
+    async def update_roles(self, ctx):
+        top_damage_players = self.rank_cog.get_top_players_by_damage(limit=3)
+        top_kills_players = self.rank_cog.get_top_players_by_kills(limit=3)
 
+        for player_id in top_damage_players:
+            user = await self.bot.fetch_user(player_id)
+            await self.grant_role(ctx, user, "Top Damager")
+
+        for player_id in top_kills_players:
+            user = await self.bot.fetch_user(player_id)
+            await self.grant_role(ctx, user, "Top Killer")
+
+    # Comando para atacar o boss
     @commands.command(name="boss")
     async def boss_attack(self, ctx):
-        """Permite atacar o boss e, se derrotado, concede uma premiação."""
         if ctx.channel.id != 1299092242673303552:
             channel_link = f"<#{1299092242673303552}>"
             await ctx.send(f"⚠️ Este comando só pode ser usado no canal {channel_link}.")
@@ -133,7 +139,6 @@ class BossCog(commands.Cog):
                 embed.set_image(url=self.boss_images[boss_image_key]["default"])
             await ctx.send(embed=embed)
         else:
-            # Registro de dano
             if user_id not in self.last_attack_time or (ctx.message.created_at.timestamp() - self.last_attack_time[user_id]) >= self.cooldown_time:
                 damage = random.randint(50, 200)
                 self.current_boss["hp"] -= damage
@@ -153,6 +158,9 @@ class BossCog(commands.Cog):
                 if boss_image_key:
                     embed.set_image(url=self.boss_images[boss_image_key]["attack"])
                 await ctx.send(embed=embed)
+
+                # Atualizar os cargos após o ataque
+                await self.update_roles(ctx)
 
                 # Chance do boss contra-atacar
                 if random.randint(1, 100) <= self.current_boss["attack_chance"]:
@@ -189,7 +197,6 @@ class BossCog(commands.Cog):
                     await ctx.send(embed=embed)
                     self.current_boss = None  # Reinicia o boss para próxima invocação
             else:
-                # Usuário está em cooldown
                 time_remaining = int(self.cooldown_time - (ctx.message.created_at.timestamp() - self.last_attack_time[user_id]))
                 minutes, seconds = divmod(time_remaining, 60)
                 embed = discord.Embed(
