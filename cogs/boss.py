@@ -107,7 +107,8 @@ class BossCog(commands.Cog):
         """Permite atacar o boss e, se derrotado, concede uma premiação."""
         # Verifica se o comando foi chamado no canal correto
         if ctx.channel.id != 1299092242673303552:
-            await ctx.send("⚠️ Este comando só pode ser usado neste canal.")
+            channel_link = f"<#{1299092242673303552}>"
+            await ctx.send(f"⚠️ Este comando só pode ser usado no canal {channel_link}.")
             return
 
         user_id = ctx.author.id
