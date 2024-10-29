@@ -52,6 +52,7 @@ async def setup_database():
                     user_id BIGINT PRIMARY KEY,
                     wounds INTEGER DEFAULT 0,
                     money INTEGER DEFAULT 1000,
+                    ember INTEGER DEFAULT 0,  -- Adicionada a coluna Ember
                     xp INTEGER DEFAULT 0,
                     level INTEGER DEFAULT 1,
                     infected BOOLEAN DEFAULT FALSE,
@@ -121,6 +122,7 @@ async def setup_database():
                 "players": {
                     "wounds": "INTEGER DEFAULT 0",
                     "money": "INTEGER DEFAULT 1000",
+                    "ember": "INTEGER DEFAULT 0",  # Adicionada a coluna Ember
                     "xp": "INTEGER DEFAULT 0",
                     "level": "INTEGER DEFAULT 1",
                     "infected": "BOOLEAN DEFAULT FALSE",
@@ -165,7 +167,7 @@ async def setup_database():
 
                 for column, definition in columns.items():
                     if column not in existing_columns:
-                        alter_query = f"ALTER TABLE {table} ADD COLUMN {column} {definition};"
+                        alter_query = f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition};"
                         try:
                             await connection.execute(alter_query)
                             print(f"Coluna '{column}' adicionada à tabela '{table}'.")
@@ -237,4 +239,3 @@ async def setup_bot():
 
 if __name__ == "__main__":
     asyncio.run(setup_bot())
-
