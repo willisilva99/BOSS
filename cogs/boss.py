@@ -10,31 +10,30 @@ class BossCog(commands.Cog):
         self.last_attack_time = {}
         self.snipers = ["🔫 SNIPER BOSS RARA", "🔥 SNIPER EMBERIUM", "💎 SNIPER DAMANTY"]
         
-        # URLs das imagens do Mega Boss
-      self.boss_images = {
-    "Gigante Emberium": {
-        "default": "https://cdn.discordapp.com/attachments/1300796026378256484/1300796094607003773/image.png",
-        "attack": "https://cdn.discordapp.com/attachments/1300796026378256484/1300796526179782758/image.png",
-        "attack_player": "https://cdn.discordapp.com/attachments/1300796026378256484/1300796853016723528/image.png",
-        "flee": "https://cdn.discordapp.com/attachments/1300796026378256484/1300801431405727795/image.png",
-        "defeated": "https://cdn.discordapp.com/attachments/1300796026378256484/1300801821169942568/image.png"
-    },
-    "Boss das Sombras": {
-        "default": "https://cdn.discordapp.com/attachments/1300802228780666900/image.png",
-        "attack": "https://cdn.discordapp.com/attachments/1300802427645198366/image.png",
-        "attack_player": "https://cdn.discordapp.com/attachments/1300802611120832574/image.png",
-        "flee": "https://cdn.discordapp.com/attachments/1300803016475148298/image.png",
-        "defeated": "https://cdn.discordapp.com/attachments/1300803312894869565/image.png"
-    },
-    "Mega Boss": {
-        "default": "https://cdn.discordapp.com/attachments/1300803765858730015/image.png",
-        "attack": "https://cdn.discordapp.com/attachments/1300809511325401171/image.png",
-        "attack_player": "https://cdn.discordapp.com/attachments/1300809635137327105/image.png",
-        "flee": "https://cdn.discordapp.com/attachments/1300809809129508956/image.png",
-        "defeated": "https://cdn.discordapp.com/attachments/1300810090147741807/image.png"
-    }
-}
-
+        # URLs das imagens dos bosses
+        self.boss_images = {
+            "Gigante Emberium": {
+                "default": "https://cdn.discordapp.com/attachments/1300796026378256484/1300796094607003773/image.png",
+                "attack": "https://cdn.discordapp.com/attachments/1300796026378256484/1300796526179782758/image.png",
+                "attack_player": "https://cdn.discordapp.com/attachments/1300796026378256484/1300796853016723528/image.png",
+                "flee": "https://cdn.discordapp.com/attachments/1300796026378256484/1300801431405727795/image.png",
+                "defeated": "https://cdn.discordapp.com/attachments/1300796026378256484/1300801821169942568/image.png"
+            },
+            "Boss das Sombras": {
+                "default": "https://cdn.discordapp.com/attachments/1300802228780666900/image.png",
+                "attack": "https://cdn.discordapp.com/attachments/1300802427645198366/image.png",
+                "attack_player": "https://cdn.discordapp.com/attachments/1300802611120832574/image.png",
+                "flee": "https://cdn.discordapp.com/attachments/1300803016475148298/image.png",
+                "defeated": "https://cdn.discordapp.com/attachments/1300803312894869565/image.png"
+            },
+            "Mega Boss": {
+                "default": "https://cdn.discordapp.com/attachments/1300803765858730015/image.png",
+                "attack": "https://cdn.discordapp.com/attachments/1300809511325401171/image.png",
+                "attack_player": "https://cdn.discordapp.com/attachments/1300809635137327105/image.png",
+                "flee": "https://cdn.discordapp.com/attachments/1300809809129508956/image.png",
+                "defeated": "https://cdn.discordapp.com/attachments/1300810090147741807/image.png"
+            }
+        }
 
         # Lista de Bosses com diferentes características e HP elevado para mais dificuldade
         self.bosses = [
