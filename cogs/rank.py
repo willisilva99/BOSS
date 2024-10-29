@@ -10,6 +10,13 @@ class RankCog(commands.Cog):
         self.kill_rank = defaultdict(int)
         self.sniper_rank = defaultdict(int)
 
+        # URLs das imagens para cada ranking
+        self.rank_images = {
+            "damage": "https://i.postimg.cc/MTJwRfzg/DALL-E-2024-10-29-15-12-42-Create-an-apocalyptic-themed-background-image-titled-Top-Rank-Dano-N.webp",
+            "kill": "https://i.postimg.cc/y85s1rt1/DALL-E-2024-10-29-15-07-02-Create-an-apocalyptic-background-image-titled-Top-Rank-Kill-Nova-Era.webp",
+            "sniper": "https://i.postimg.cc/R0H9NLxc/DALL-E-2024-10-29-15-20-36-Create-an-apocalyptic-themed-background-image-titled-Top-Sniper-Nova.webp"
+        }
+
         # IDs dos cargos para cada posição de cada ranking
         self.role_ids = {
             "damage": [1300850877585690655, 1300852310171324566, 1300852691970428958],
@@ -57,18 +64,19 @@ class RankCog(commands.Cog):
             print("Erro: Canal de classificação não encontrado.")
             return
 
-        # Seleciona o ranking apropriado
+        # Seleciona o ranking apropriado e a imagem de fundo
         rank = getattr(self, f"{rank_type}_rank")
         sorted_rank = sorted(rank.items(), key=lambda x: x[1], reverse=True)[:5]
+        image_url = self.rank_images[rank_type]
 
-        # Cria o embed para o ranking
+        # Cria o embed para o ranking com imagem temática
         embed = discord.Embed(
             title=title,
-            description="Aqui estão os heróis que se destacaram! Parabéns aos líderes!",
+            description="Sobreviventes lendários que se destacaram em um mundo apocalíptico. Honra e glória aos melhores!",
             color=discord.Color.orange()
         )
-        embed.set_thumbnail(url="https://i.postimg.cc/Y9TKwnJp/trophy-icon.png")
-        embed.set_footer(text="Continue batalhando para melhorar seu rank! 💪")
+        embed.set_image(url=image_url)
+        embed.set_footer(text="Continue lutando para subir no ranking e mostrar sua força! 💪")
 
         for i, (user_id, score) in enumerate(sorted_rank, 1):
             embed.add_field(
