@@ -21,10 +21,6 @@ class RankCog(commands.Cog):
         # ID do canal onde o rank será exibido
         self.channel_id = 1186636197934661632
 
-        # Inicia as tarefas para exibição e atualização do ranking e de cargos
-        self.show_rank.start()
-        self.update_roles.start()
-
     @commands.Cog.listener()
     async def on_ready(self):
         # Aguarda um delay para garantir que o bot está completamente conectado
@@ -32,6 +28,8 @@ class RankCog(commands.Cog):
         channel = self.bot.get_channel(self.channel_id)
         if channel:
             print(f"Canal de rank encontrado: {channel.name} (ID: {channel.id})")
+            self.show_rank.start()  # Inicia a tarefa de exibição de ranking
+            self.update_roles.start()  # Inicia a tarefa de atualização de cargos
         else:
             print("Erro: Canal de classificação não encontrado após o delay de inicialização.")
         print("RankCog está pronto!")
