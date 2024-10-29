@@ -35,7 +35,29 @@ class BossCog(commands.Cog):
             }
         }
 
-        # Lista de diálogos dos bosses
+        # URLs das imagens das snipers
+        self.sniper_images = {
+            "SNIPER BOSS RARA": {
+                "default": "https://i.postimg.cc/50hC80DG/DALL-E-2024-10-29-10-21-27-A-rugged-survivor-in-an-apocalyptic-setting-holding-the-Emberium-Snip.webp",  # Sniper Boss Rara
+                "broken": "https://i.postimg.cc/mDz9cMpC/DALL-E-2024-10-29-10-23-18-A-rugged-survivor-in-an-apocalyptic-setting-holding-a-completely-shatt.webp"  # Sniper Boss Rara quebrada
+            },
+            "SNIPER EMBERIUM": {
+                "default": "https://i.postimg.cc/nh2BNnQj/DALL-E-2024-10-29-10-24-23-A-rugged-survivor-in-an-apocalyptic-setting-confidently-wielding-the.webp",  # Sniper Emberium
+                "broken": "https://i.postimg.cc/1zzwQbpW/DALL-E-2024-10-29-10-31-58-A-rugged-survivor-in-an-apocalyptic-setting-holding-a-Sniper-Boss-Rar.webp"  # Sniper Emberium quebrada
+            },
+            "SNIPER DAMANTY": {
+                "default": "https://i.postimg.cc/qv42mNgH/DALL-E-2024-10-29-10-32-54-A-rugged-survivor-in-an-apocalyptic-setting-confidently-holding-the-S.webp",  # Sniper Damanty
+                "broken": "https://i.postimg.cc/MGrRKt5z/DALL-E-2024-10-29-10-33-40-A-rugged-survivor-in-an-apocalyptic-setting-holding-a-Sniper-Damanty.webp"  # Sniper Damanty quebrada
+            }
+        }
+
+        # Lista de bosses com diferentes características e HP elevado para mais dificuldade
+        self.bosses = [
+            {"name": "👹 Mega Boss", "hp": 5000, "attack_chance": 30, "damage_range": (50, 150)},
+            {"name": "👻 Boss das Sombras", "hp": 7000, "attack_chance": 40, "damage_range": (60, 200)},
+            {"name": "💀 Gigante Emberium", "hp": 10000, "attack_chance": 50, "damage_range": (80, 250)},
+        ]
+
         self.boss_dialogues = {
             "invocation": [
                 "🌍 O mundo está em ruínas, e você ousa me desafiar?!",
