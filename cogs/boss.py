@@ -12,6 +12,8 @@ class BossCog(commands.Cog):
         self.current_event = None
         self.horda_infinita_active = False
         self.panico_geral_active = False
+
+        # Iniciar as tarefas
         self.boss_attack_task.start()
         self.rank_update.start()
         self.daily_mission_task.start()
@@ -69,8 +71,7 @@ class BossCog(commands.Cog):
         self.commands_channel_id = 1299092242673303552  # Substitua pelo ID correto
         self.exempt_role_id = 1296631135442309160  # Substitua pelo ID correto
         self.minions = ["Minion 1 🧟", "Minion 2 🧟", "Minion 3 🧟"]
-        self.boss_phases = ["fase_one", "fase_two", "fase_three"]
-        
+
         # Configuração da Loja Ember
         self.shop_ember_items = {
             "armadura_de_zumbi": {
@@ -97,7 +98,7 @@ class BossCog(commands.Cog):
         
         # Configuração de Missões Diárias
         self.daily_mission = {}
-        
+
     async def ensure_player(self, user_id):
         """Garante que o usuário tenha uma entrada na tabela 'players'."""
         async with self.bot.pool.acquire() as connection:
@@ -110,7 +111,7 @@ class BossCog(commands.Cog):
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 """, user_id, 0, 1000, 0, 0, 1, False, False)
                 print(f"Jogador {user_id} adicionado à tabela 'players'.")
-    
+
     @commands.group(invoke_without_command=True, name="boss")
     @commands.cooldown(1, 3600, commands.BucketType.user)  # 1 hora de cooldown por usuário
     async def boss(self, ctx):
