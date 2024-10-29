@@ -5,6 +5,7 @@ import asyncpg
 import asyncio
 import random
 from dotenv import load_dotenv
+import traceback  # Importa para obter detalhes completos dos erros
 
 # Carrega variáveis de ambiente do arquivo .env
 load_dotenv()
@@ -23,7 +24,6 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # Lista de cogs
 cogs = [
     "boss",  # Adicionando o cog do boss
-
 ]
 
 # Mensagens de status aleatórias
@@ -39,6 +39,9 @@ status_messages = [
     "explorando o mapa",
     "realizando missões"
 ]
+
+# ID do canal para relatórios de erros (defina no .env)
+ERROR_CHANNEL_ID = int(os.getenv("ERROR_CHANNEL_ID", 0))
 
 async def setup_database():
     # Configura a conexão com o banco de dados e cria as tabelas necessárias
@@ -65,7 +68,7 @@ async def setup_database():
                 );
             """)
     except Exception as e:
-        print(f"Erro ao conectar ao banco de dados: {e}")
+        await report_error(f"Erro ao conectar ao banco de dados: {e}")
 
 async def load_cogs():
     # Carrega os cogs
@@ -74,7 +77,7 @@ async def load_cogs():
             await bot.load_extension(f"cogs.{cog}")
             print(f"Cog {cog} carregado com sucesso.")
         except Exception as e:
-            print(f"Erro ao carregar o cog {cog}: {e}")
+            await report_error(f"Erro ao carregar o cog {cog}: {e}")
 
 @tasks.loop(minutes=10)
 async def change_status():
@@ -90,9 +93,17 @@ async def on_ready():
 
 @bot.event
 async def on_command_error(ctx, error):
-    # Captura erros de comando
-    await ctx.send(f"Ocorreu um erro: {error}")
-    print(f"Erro detectado: {error}")
+    # Captura e exibe erros de comando, enviando ao canal de erro e ao console
+    error_message = f"Ocorreu um erro no comando `{ctx.command}`:\n{error}"
+    print(f"Erro detectado: {error_message}")
+    await ctx.send(error_message)  # Envia mensagem ao usuário
+
+    # Envia o relatório detalhado ao canal de erro, se configurado
+    if ERROR_CHANNEL_ID:
+        error_channel = bot.get_channel(ERROR_CHANNEL_ID)
+        if error_channel:
+            trace = ''.join(traceback.format_exception(type(error), error, error.__traceback__))
+            await error_channel.send(f"**Erro em {ctx.command}:**\n```{trace}```")
 
 @bot.event
 async def on_message(message):
@@ -101,6 +112,14 @@ async def on_message(message):
         return
     # Processa comandos nas mensagens
     await bot.process_commands(message)
+
+async def report_error(error_message):
+    # Reporta erros ao console e, se possível, a um canal específico no Discord
+    print(error_message)  # Log no console
+    if ERROR_CHANNEL_ID:
+        error_channel = bot.get_channel(ERROR_CHANNEL_ID)
+        if error_channel:
+            await error_channel.send(f"**Erro detectado:**\n{error_message}")
 
 async def setup():
     await setup_database()  # Configura o banco de dados
