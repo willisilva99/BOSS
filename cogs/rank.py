@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands, tasks
 from collections import defaultdict
-import datetime
 
 class RankCog(commands.Cog):
     def __init__(self, bot):
@@ -18,10 +17,10 @@ class RankCog(commands.Cog):
             "sniper": [1300854639658270761, 1300854891350327438, 1300855252928434288]
         }
 
-        # Defina o ID do canal onde o rank será exibido
-        self.channel_id = 1186636197934661632  # ID do canal específico para mensagens de rank
+        # ID do canal onde o rank será exibido
+        self.channel_id = 1186636197934661632
 
-        # Alterna o rank a cada 2 minutos e atualiza cargos a cada 3 horas
+        # Inicia as tarefas para exibição e atualização do ranking e de cargos
         self.show_rank.start()
         self.update_roles.start()
 
@@ -37,18 +36,28 @@ class RankCog(commands.Cog):
         """Registra uma sniper ganha por um usuário."""
         self.sniper_rank[user_id] += 1
 
+    @commands.Cog.listener()
+    async def on_ready(self):
+        # Verifica se o bot está pronto e encontra o canal de rank
+        channel = self.bot.get_channel(self.channel_id)
+        if channel:
+            print(f"Canal de rank encontrado: {channel.name} (ID: {channel.id})")
+        else:
+            print("Erro: Canal de classificação não encontrado.")
+        print("RankCog está pronto!")
+
     @tasks.loop(minutes=2)
     async def show_rank(self):
         """Alterna entre os rankings a cada 2 minutos e envia a mensagem de rank no canal correto."""
         # Obtenha o canal de rank
         channel = self.bot.get_channel(self.channel_id)
         if not channel:
-            print("Erro: Canal de rank não encontrado.")
+            print("Erro: Canal de classificação não encontrado.")
             return
 
         # Configura títulos e emojis para cada ranking
         rank_titles = [
-            "🏆 **Top 5 Guerreiros no Dano ao Boss**",
+            "🏆 **Top 5 Guerreiros - Dano ao Boss**",
             "⚔️ **Top 5 Matadores de Bosses**",
             "🔫 **Top 5 Colecionadores de Snipers**"
         ]
@@ -56,10 +65,11 @@ class RankCog(commands.Cog):
 
         embed = discord.Embed(
             title=rank_titles[self.rank_display_index],
-            description="Confira o desempenho dos melhores jogadores!",
-            color=discord.Color.gold()
+            description="Parabéns aos melhores guerreiros! Lutem para alcançar o topo e mostrar sua força!",
+            color=discord.Color.orange()
         )
-        embed.set_footer(text="Continue batalhando para subir no ranking! 🔝")
+        embed.set_thumbnail(url="https://i.postimg.cc/Y9TKwnJp/trophy-icon.png")  # Ícone de troféu
+        embed.set_footer(text="Continue batalhando para melhorar seu rank! 💪")
 
         # Exibir o ranking correto com base no índice atual
         if self.rank_display_index == 0:
@@ -96,7 +106,7 @@ class RankCog(commands.Cog):
     @tasks.loop(hours=3)
     async def update_roles(self):
         """Atualiza os cargos dos Top 3 de cada ranking a cada 3 horas."""
-        guild = self.bot.get_guild(self.bot.guilds[0].id)  # Assume o primeiro servidor do bot
+        guild = self.bot.guilds[0]  # Assume o primeiro servidor do bot
         if not guild:
             print("Erro: Servidor não encontrado.")
             return
@@ -127,10 +137,6 @@ class RankCog(commands.Cog):
             for member in role.members:
                 if member.id not in [user_id for user_id, _ in sorted_rank]:
                     await member.remove_roles(role, reason="Removido do Top 3")
-
-    @commands.Cog.listener()
-    async def on_ready(self):
-        print("RankCog está pronto!")
 
 async def setup(bot):
     await bot.add_cog(RankCog(bot))
