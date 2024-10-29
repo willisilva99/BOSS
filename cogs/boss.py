@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands, tasks
 import random
 import time
+import asyncio  # Importando asyncio aqui
 
 class BossCog(commands.Cog):
     def __init__(self, bot):
