@@ -5,7 +5,6 @@ import asyncpg
 import asyncio
 import random
 from dotenv import load_dotenv
-import traceback  # Importa para obter detalhes completos dos erros
 
 # Carrega variáveis de ambiente do arquivo .env
 load_dotenv()
@@ -23,41 +22,39 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Lista de cogs
 cogs = [
-    "boss",  # Adicionando o cog do boss
+    "boss",  # Cog do boss com funcionalidades avançadas
 ]
 
-# Mensagens de status aleatórias
+# Mensagens de status aleatórias para dar mais imersão ao bot
 status_messages = [
-    "sobrevivendo ao apocalipse",
-    "explorando novas bases",
-    "caçando zumbis",
-    "coletando recursos",
-    "protegendo os sobreviventes",
-    "negociando embers",
-    "construindo alianças",
-    "lutando contra hordas",
-    "explorando o mapa",
-    "realizando missões"
+    "sobrevivendo ao apocalipse...",
+    "explorando novas bases...",
+    "caçando zumbis...",
+    "coletando recursos...",
+    "protegendo os sobreviventes...",
+    "negociando embers...",
+    "construindo alianças...",
+    "lutando contra hordas...",
+    "explorando o mapa...",
+    "realizando missões..."
 ]
-
-# ID do canal para relatórios de erros (defina no .env)
-ERROR_CHANNEL_ID = int(os.getenv("ERROR_CHANNEL_ID", 0))
 
 async def setup_database():
-    # Configura a conexão com o banco de dados e cria as tabelas necessárias
+    # Conecta ao banco de dados e cria as tabelas, se não existirem
     try:
         bot.pool = await asyncpg.create_pool(dsn=DATABASE_URL, min_size=1, max_size=10)
         print("Conexão com o banco de dados estabelecida com sucesso.")
 
         async with bot.pool.acquire() as connection:
-            # Criação das tabelas se não existirem
+            # Criação das tabelas no banco de dados
             await connection.execute("""
                 CREATE TABLE IF NOT EXISTS players (
                     user_id BIGINT PRIMARY KEY,
                     wounds INTEGER DEFAULT 0,
                     money INTEGER DEFAULT 1000,
                     xp INTEGER DEFAULT 0,
-                    level INTEGER DEFAULT 1
+                    level INTEGER DEFAULT 1,
+                    infected BOOLEAN DEFAULT FALSE
                 );
             """)
             await connection.execute("""
@@ -68,20 +65,20 @@ async def setup_database():
                 );
             """)
     except Exception as e:
-        await report_error(f"Erro ao conectar ao banco de dados: {e}")
+        print(f"Erro ao conectar ao banco de dados: {e}")
 
 async def load_cogs():
-    # Carrega os cogs
+    # Carrega todos os cogs listados
     for cog in cogs:
         try:
             await bot.load_extension(f"cogs.{cog}")
             print(f"Cog {cog} carregado com sucesso.")
         except Exception as e:
-            await report_error(f"Erro ao carregar o cog {cog}: {e}")
+            print(f"Erro ao carregar o cog {cog}: {e}")
 
 @tasks.loop(minutes=10)
 async def change_status():
-    # Muda o status do bot periodicamente
+    # Atualiza o status do bot aleatoriamente a cada 10 minutos
     new_status = random.choice(status_messages)
     await bot.change_presence(activity=discord.Game(new_status))
 
@@ -89,42 +86,30 @@ async def change_status():
 async def on_ready():
     print(f"Bot conectado como {bot.user}")
     print("Bot está pronto e todos os cogs foram carregados.")
-    change_status.start()  # Inicia a tarefa de status aleatório
+    change_status.start()  # Inicia a tarefa de mudança de status
 
 @bot.event
 async def on_command_error(ctx, error):
-    # Captura e exibe erros de comando, enviando ao canal de erro e ao console
-    error_message = f"Ocorreu um erro no comando `{ctx.command}`:\n{error}"
-    print(f"Erro detectado: {error_message}")
-    await ctx.send(error_message)  # Envia mensagem ao usuário
-
-    # Envia o relatório detalhado ao canal de erro, se configurado
-    if ERROR_CHANNEL_ID:
-        error_channel = bot.get_channel(ERROR_CHANNEL_ID)
-        if error_channel:
-            trace = ''.join(traceback.format_exception(type(error), error, error.__traceback__))
-            await error_channel.send(f"**Erro em {ctx.command}:**\n```{trace}```")
+    # Captura e exibe erros de comando
+    embed = discord.Embed(
+        title="⚠️ Erro de Comando",
+        description=f"Ocorreu um erro ao executar `{ctx.command}`:\n{error}",
+        color=discord.Color.red()
+    )
+    await ctx.send(embed=embed)
+    print(f"Erro detectado: {error}")
 
 @bot.event
 async def on_message(message):
-    # Ignora mensagens do próprio bot
+    # Ignora mensagens do próprio bot e processa comandos nas mensagens
     if message.author == bot.user:
         return
-    # Processa comandos nas mensagens
     await bot.process_commands(message)
 
-async def report_error(error_message):
-    # Reporta erros ao console e, se possível, a um canal específico no Discord
-    print(error_message)  # Log no console
-    if ERROR_CHANNEL_ID:
-        error_channel = bot.get_channel(ERROR_CHANNEL_ID)
-        if error_channel:
-            await error_channel.send(f"**Erro detectado:**\n{error_message}")
-
 async def setup():
-    await setup_database()  # Configura o banco de dados
+    await setup_database()  # Configura e conecta o banco de dados
     await load_cogs()       # Carrega os cogs
-    await bot.start(os.getenv("TOKEN"))  # Inicia o bot
+    await bot.start(os.getenv("TOKEN"))  # Inicia o bot com o token do .env
 
 if __name__ == "__main__":
     asyncio.run(setup())
