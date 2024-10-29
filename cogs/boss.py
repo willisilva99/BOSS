@@ -27,7 +27,6 @@ class BossCog(commands.Cog):
         return "O boss não deixou nenhuma sniper desta vez."
 
     @commands.command(name="boss")
-    @commands.cooldown(1, 3600, commands.BucketType.user)
     async def boss_attack(self, ctx):
         """Permite atacar o boss e, se derrotado, concede uma premiação."""
         user_id = ctx.author.id
@@ -35,12 +34,23 @@ class BossCog(commands.Cog):
             # Invoca o boss com 1000 HP, configurável
             self.current_boss = {"name": "Mega Boss", "hp": 1000}
             await ctx.send(f"⚔️ O {self.current_boss['name']} foi invocado com {self.current_boss['hp']} HP!")
+            # Permite que o invocador ataque imediatamente sem cooldown
+            damage = random.randint(50, 150)
+            self.current_boss["hp"] -= damage
+            await ctx.send(f"{ctx.author.display_name} atacou o boss causando {damage} de dano! HP restante do boss: {self.current_boss['hp']}")
 
+            if self.current_boss["hp"] <= 0:
+                # Boss derrotado imediatamente
+                await ctx.send("🏆 O boss foi derrotado!")
+                reward_message = self.generate_sniper_drop()
+                await ctx.send(reward_message)
+                self.current_boss = None  # Reinicia o boss para próxima invocação
         else:
-            # Confere se o boss ainda está vivo
-            if self.current_boss["hp"] > 0:
+            # Caso o boss já tenha sido invocado, aplica o cooldown padrão
+            if ctx.author.id not in self.last_attack_time or (ctx.message.created_at.timestamp() - self.last_attack_time[ctx.author.id]) >= self.cooldown_time:
                 damage = random.randint(50, 150)
                 self.current_boss["hp"] -= damage
+                self.last_attack_time[ctx.author.id] = ctx.message.created_at.timestamp()
                 await ctx.send(f"{ctx.author.display_name} atacou o boss causando {damage} de dano! HP restante do boss: {self.current_boss['hp']}")
 
                 if self.current_boss["hp"] <= 0:
@@ -49,6 +59,10 @@ class BossCog(commands.Cog):
                     reward_message = self.generate_sniper_drop()
                     await ctx.send(reward_message)
                     self.current_boss = None  # Reinicia o boss para próxima invocação
+            else:
+                # Usuário está em cooldown
+                time_remaining = self.cooldown_time - (ctx.message.created_at.timestamp() - self.last_attack_time[ctx.author.id])
+                await ctx.send(f"⏳ {ctx.author.display_name}, você precisa esperar mais {time_remaining:.0f} segundos para atacar o boss novamente!")
 
     @commands.Cog.listener()
     async def on_ready(self):
