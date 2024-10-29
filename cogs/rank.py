@@ -18,9 +18,8 @@ class RankCog(commands.Cog):
             "sniper": [1300854639658270761, 1300854891350327438, 1300855252928434288]
         }
 
-        # IDs do servidor e do canal
-        self.guild_id = 1186390028990025820  # ID do seu servidor
-        self.channel_id = 1186636197934661632  # ID do canal onde o rank será exibido
+        # Defina o ID do canal onde o rank será exibido
+        self.channel_id = 1186636197934661632  # ID do canal específico para mensagens de rank
 
         # Alterna o rank a cada 2 minutos e atualiza cargos a cada 3 horas
         self.show_rank.start()
@@ -38,33 +37,16 @@ class RankCog(commands.Cog):
         """Registra uma sniper ganha por um usuário."""
         self.sniper_rank[user_id] += 1
 
-    async def update_top_roles(self, guild, ranking, role_ids):
-        """Atribui cargos ao Top 3 de um ranking específico e remove cargos antigos."""
-        # Ordena o ranking e pega o Top 3
-        sorted_rank = sorted(ranking.items(), key=lambda x: x[1], reverse=True)[:3]
-
-        for index, (user_id, _) in enumerate(sorted_rank):
-            member = guild.get_member(user_id)
-            if member:
-                # Atribui o cargo correspondente ao ranking atual
-                role = guild.get_role(role_ids[index])
-                await member.add_roles(role, reason="Atualização de rank")
-        
-        # Remove cargos dos usuários que saíram do Top 3
-        for role_id in role_ids:
-            role = guild.get_role(role_id)
-            for member in role.members:
-                if member.id not in [user_id for user_id, _ in sorted_rank]:
-                    await member.remove_roles(role, reason="Removido do Top 3")
-
     @tasks.loop(minutes=2)
     async def show_rank(self):
-        """Alterna entre os rankings a cada 2 minutos."""
+        """Alterna entre os rankings a cada 2 minutos e envia a mensagem de rank no canal correto."""
+        # Obtenha o canal de rank
         channel = self.bot.get_channel(self.channel_id)
         if not channel:
             print("Erro: Canal de rank não encontrado.")
             return
 
+        # Configura títulos e emojis para cada ranking
         rank_titles = [
             "🏆 **Top 5 Guerreiros no Dano ao Boss**",
             "⚔️ **Top 5 Matadores de Bosses**",
@@ -79,6 +61,7 @@ class RankCog(commands.Cog):
         )
         embed.set_footer(text="Continue batalhando para subir no ranking! 🔝")
 
+        # Exibir o ranking correto com base no índice atual
         if self.rank_display_index == 0:
             sorted_rank = sorted(self.damage_rank.items(), key=lambda x: x[1], reverse=True)
             for i, (user_id, damage) in enumerate(sorted_rank[:5], 1):
@@ -113,11 +96,12 @@ class RankCog(commands.Cog):
     @tasks.loop(hours=3)
     async def update_roles(self):
         """Atualiza os cargos dos Top 3 de cada ranking a cada 3 horas."""
-        guild = self.bot.get_guild(self.guild_id)
+        guild = self.bot.get_guild(self.bot.guilds[0].id)  # Assume o primeiro servidor do bot
         if not guild:
             print("Erro: Servidor não encontrado.")
             return
 
+        # Atualiza o Top 3 dos rankings de acordo com o rank atual
         if self.rank_display_index == 0:
             await self.update_top_roles(guild, self.damage_rank, self.role_ids["damage"])
         elif self.rank_display_index == 1:
@@ -125,52 +109,24 @@ class RankCog(commands.Cog):
         elif self.rank_display_index == 2:
             await self.update_top_roles(guild, self.sniper_rank, self.role_ids["sniper"])
 
-    @commands.command(name="rank")
-    async def display_rank(self, ctx):
-        """Exibe o rank atual manualmente."""
-        rank_titles = [
-            "🏆 **Top 5 Guerreiros no Dano ao Boss**",
-            "⚔️ **Top 5 Matadores de Bosses**",
-            "🔫 **Top 5 Colecionadores de Snipers**"
-        ]
-        rank_emojis = ["💥", "💀", "🎯"]
+    async def update_top_roles(self, guild, ranking, role_ids):
+        """Atribui cargos ao Top 3 de um ranking específico e remove cargos antigos."""
+        # Ordena o ranking e pega o Top 3
+        sorted_rank = sorted(ranking.items(), key=lambda x: x[1], reverse=True)[:3]
 
-        embed = discord.Embed(
-            title=rank_titles[self.rank_display_index],
-            description="Confira o desempenho dos melhores jogadores!",
-            color=discord.Color.gold()
-        )
-        embed.set_footer(text="Continue batalhando para subir no ranking! 🔝")
-
-        if self.rank_display_index == 0:
-            sorted_rank = sorted(self.damage_rank.items(), key=lambda x: x[1], reverse=True)
-            for i, (user_id, damage) in enumerate(sorted_rank[:5], 1):
-                emoji = rank_emojis[0]
-                embed.add_field(
-                    name=f"{emoji} {i}. <@{user_id}>",
-                    value=f"**Dano Causado:** {damage} 💥",
-                    inline=False
-                )
-        elif self.rank_display_index == 1:
-            sorted_rank = sorted(self.kill_rank.items(), key=lambda x: x[1], reverse=True)
-            for i, (user_id, kills) in enumerate(sorted_rank[:5], 1):
-                emoji = rank_emojis[1]
-                embed.add_field(
-                    name=f"{emoji} {i}. <@{user_id}>",
-                    value=f"**Bosses Derrotados:** {kills} 💀",
-                    inline=False
-                )
-        else:
-            sorted_rank = sorted(self.sniper_rank.items(), key=lambda x: x[1], reverse=True)
-            for i, (user_id, snipers) in enumerate(sorted_rank[:5], 1):
-                emoji = rank_emojis[2]
-                embed.add_field(
-                    name=f"{emoji} {i}. <@{user_id}>",
-                    value=f"**Snipers Conquistadas:** {snipers} 🎯",
-                    inline=False
-                )
-
-        await ctx.send(embed=embed)
+        for index, (user_id, _) in enumerate(sorted_rank):
+            member = guild.get_member(user_id)
+            if member:
+                # Atribui o cargo correspondente ao ranking atual
+                role = guild.get_role(role_ids[index])
+                await member.add_roles(role, reason="Atualização de rank")
+        
+        # Remove cargos dos usuários que saíram do Top 3
+        for role_id in role_ids:
+            role = guild.get_role(role_id)
+            for member in role.members:
+                if member.id not in [user_id for user_id, _ in sorted_rank]:
+                    await member.remove_roles(role, reason="Removido do Top 3")
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -178,4 +134,3 @@ class RankCog(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(RankCog(bot))
-
