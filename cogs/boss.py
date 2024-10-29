@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 import random
-from rank import RankCog  # Importa o RankCog
+from .rank import RankCog  # Importação do RankCog
 
 class BossCog(commands.Cog):
     def __init__(self, bot):
@@ -48,7 +48,7 @@ class BossCog(commands.Cog):
         self.sniper_images = {
             "SNIPER BOSS RARA": {
                 "default": "https://i.postimg.cc/50hC80DG/DALL-E-2024-10-29-10-21-27-A-rugged-survivor-in-an-apocalyptic-setting-holding-the-Emberium-Snip.webp",
-                "broken": "https://i.postimg.cc/mDz9cMpC/DALL-E-2024-10-23-18-A-rugged-survivor-in-an-apocalyptic-setting-holding-a-completely-shatt.webp"
+                "broken": "https://i.postimg.cc/mDz9cMpC/DALL-E-2024-10-29-10-23-18-A-rugged-survivor-in-an-apocalyptic-setting-holding-a-completely-shatt.webp"
             },
             "SNIPER EMBERIUM": {
                 "default": "https://i.postimg.cc/nh2BNnQj/DALL-E-2024-10-29-10-24-23-A-rugged-survivor-in-an-apocalyptic-setting-confidently-wielding-the.webp",
@@ -133,14 +133,9 @@ class BossCog(commands.Cog):
                 embed.set_image(url=self.boss_images[boss_image_key]["default"])
             await ctx.send(embed=embed)
         else:
-            # Registro de dano
             if user_id not in self.last_attack_time or (ctx.message.created_at.timestamp() - self.last_attack_time[user_id]) >= self.cooldown_time:
                 damage = random.randint(50, 200)
                 self.current_boss["hp"] -= damage
-
-                # Registrar o dano no RankCog
-                self.rank_cog.record_damage(user_id, damage)
-
                 self.last_attack_time[user_id] = ctx.message.created_at.timestamp()
                 embed = discord.Embed(
                     title="🎯 Ataque no Boss!",
@@ -154,7 +149,6 @@ class BossCog(commands.Cog):
                     embed.set_image(url=self.boss_images[boss_image_key]["attack"])
                 await ctx.send(embed=embed)
 
-                # Chance do boss contra-atacar
                 if random.randint(1, 100) <= self.current_boss["attack_chance"]:
                     boss_damage = random.randint(*self.current_boss["damage_range"])
                     embed = discord.Embed(
@@ -176,7 +170,12 @@ class BossCog(commands.Cog):
                     if boss_image_key:
                         embed.set_image(url=self.boss_images[boss_image_key]["defeated"])
                     await ctx.send(embed=embed)
-                    self.current_boss = None  # Reinicia o boss para próxima invocação
+
+                    # Atualiza os rankings após derrotar o boss
+                    self.bot.get_cog('RankCog').record_damage(user_id, damage)  # Registra o dano no ranking
+                    self.bot.get_cog('RankCog').record_kill(user_id)  # Registra a kill no ranking
+
+                    self.current_boss = None
                 elif await self.attempt_boss_escape():
                     embed = discord.Embed(
                         title="🏃‍♂️ O Boss Fugiu!",
@@ -187,9 +186,8 @@ class BossCog(commands.Cog):
                     if boss_image_key:
                         embed.set_image(url=self.boss_images[boss_image_key]["flee"])
                     await ctx.send(embed=embed)
-                    self.current_boss = None  # Reinicia o boss para próxima invocação
+                    self.current_boss = None
             else:
-                # Usuário está em cooldown
                 time_remaining = int(self.cooldown_time - (ctx.message.created_at.timestamp() - self.last_attack_time[user_id]))
                 minutes, seconds = divmod(time_remaining, 60)
                 embed = discord.Embed(
