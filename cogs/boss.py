@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands, tasks
 import random
 import time
-from datetime import datetime, timedelta
 
 class BossCog(commands.Cog):
     def __init__(self, bot):
@@ -20,6 +19,7 @@ class BossCog(commands.Cog):
             {"name": "Zumbi Destruidor 💀", "hp": 2500, "attack_power": 200}
         ]
         self.weapons = ["🪓 Machado Lendário", "🔫 Pistola Rugida", "🔪 Faca Sombria"]
+        self.consumables = {"antiviral": "💊 Remédio Antiviral", "soro": "💉 Soro de Força"}  # Consumíveis
         self.status_channel_id = 1186636197934661632
         self.commands_channel_id = 1299092242673303552
         self.exempt_role_id = 1296631135442309160  # Cargo com permissão de ignorar cooldown
@@ -85,6 +85,9 @@ class BossCog(commands.Cog):
             # Checa se o boss foi derrotado
             if self.current_boss["current_hp"] <= 0:
                 await self.defeat_boss(ctx, user_id)
+            else:
+                # Habilidade especial do boss quando HP está baixo
+                await self.boss_special_ability()
 
     async def defeat_boss(self, ctx, user_id):
         # Recompensa e reset do boss após derrota
@@ -98,6 +101,26 @@ class BossCog(commands.Cog):
         await ctx.send(embed=embed)
         self.current_boss = None  # Reseta o boss
     
+    async def boss_special_ability(self):
+        if self.current_boss and self.current_boss["current_hp"] < self.current_boss["hp"] * 0.3:
+            # Aumenta o poder de ataque e invoca minions se não tiver usado a habilidade antes
+            if not self.current_boss.get("enraged"):
+                self.current_boss["attack_power"] *= 1.5  # Aumenta o poder de ataque em 50%
+                self.current_boss["enraged"] = True  # Marca como "enfurecido"
+                await self.bot.get_channel(self.status_channel_id).send(
+                    f"🔥 O boss **{self.current_boss['name']}** entrou em fúria! Seu ataque agora é devastador! 🔥"
+                )
+                # Invocando minions como evento extra
+                await self.summon_minions()
+
+    async def summon_minions(self):
+        """Simula a invocação de minions como apoio ao boss."""
+        minions_count = random.randint(2, 5)  # Número aleatório de minions
+        minions = [f"Minion {i+1} 🧟" for i in range(minions_count)]
+        await self.bot.get_channel(self.status_channel_id).send(
+            f"**{self.current_boss['name']}** invocou minions! Eles estão atacando jogadores: {', '.join(minions)}."
+        )
+        
     # Sistema de XP
     async def award_xp(self, user_id, amount):
         async with self.bot.pool.acquire() as connection:
