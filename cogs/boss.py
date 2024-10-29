@@ -10,6 +10,7 @@ class BossCog(commands.Cog):
         self.current_boss = None
         self.boss_attack_task.start()
         self.rank_update.start()
+        self.change_status.start()
         
         # Configuração de bosses
         self.bosses = [
@@ -79,9 +80,10 @@ class BossCog(commands.Cog):
                 """, user_id, 0, 1000, 0, 1, False, False)
                 print(f"Jogador {user_id} adicionado à tabela 'players'.")
 
-    @commands.command(name="boss")
-    @commands.cooldown(1, 3600, commands.BucketType.default)  # 1 hora de cooldown global
-    async def boss_command(self, ctx):
+    @commands.group(invoke_without_command=True, name="boss")
+    @commands.cooldown(1, 3600, commands.BucketType.user)  # 1 hora de cooldown por usuário
+    async def boss(self, ctx):
+        """Comando principal para interagir com o boss."""
         if ctx.channel.id != self.commands_channel_id:
             await ctx.send("⚠️ Este comando só pode ser usado no canal designado para combates.")
             return
@@ -144,6 +146,132 @@ class BossCog(commands.Cog):
                 else:
                     # Atualiza fase do boss se necessário
                     await self.update_boss_phase()
+
+    @boss.command(name="status")
+    async def boss_status(self, ctx):
+        """Exibe o status atual do boss."""
+        if not self.current_boss:
+            await ctx.send("⚔️ Não há nenhum boss ativo no momento.")
+            return
+
+        embed = discord.Embed(
+            title=f"⚔️ Status do Boss: {self.current_boss['name']}",
+            description=f"**HP:** {self.current_boss['current_hp']}/{self.current_boss['hp']}\n"
+                        f"**Fase:** {self.current_boss['phase']}",
+            color=discord.Color.blue()
+        )
+        await ctx.send(embed=embed)
+
+    @boss.command(name="stats")
+    async def boss_stats(self, ctx):
+        """Exibe as estatísticas do jogador."""
+        user_id = ctx.author.id
+        await self.ensure_player(user_id)
+
+        async with self.bot.pool.acquire() as connection:
+            result = await connection.fetchrow("SELECT * FROM players WHERE user_id = $1", user_id)
+
+        if not result:
+            await ctx.send("⚠️ Não foi possível encontrar seu perfil. Tente novamente.")
+            return
+
+        embed = discord.Embed(
+            title=f"📊 Estatísticas de {ctx.author.display_name}",
+            color=discord.Color.purple()
+        )
+        embed.add_field(name="Nível", value=result['level'], inline=True)
+        embed.add_field(name="XP", value=result['xp'], inline=True)
+        embed.add_field(name="Dinheiro", value=result['money'], inline=True)
+        embed.add_field(name="Ferimentos", value=result['wounds'], inline=True)
+        embed.add_field(name="Infectado", value="Sim" if result['infected'] else "Não", inline=True)
+        embed.add_field(name="Debuff de Dano", value="Sim" if result['damage_debuff'] else "Não", inline=True)
+        await ctx.send(embed=embed)
+
+    @boss.command(name="inventory")
+    async def boss_inventory(self, ctx):
+        """Exibe o inventário do jogador."""
+        user_id = ctx.author.id
+        await self.ensure_player(user_id)
+
+        async with self.bot.pool.acquire() as connection:
+            items = await connection.fetch("SELECT item FROM inventory WHERE user_id = $1", user_id)
+
+        if not items:
+            await ctx.send("📦 Seu inventário está vazio.")
+            return
+
+        inventory_list = "\n".join([f"- {item['item']}" for item in items])
+        embed = discord.Embed(
+            title=f"📦 Inventário de {ctx.author.display_name}",
+            description=inventory_list,
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+
+    @boss.command(name="use")
+    async def boss_use_item(self, ctx, *, item_name: str = None):
+        """Permite que o jogador use um item do inventário."""
+        if not item_name:
+            await ctx.send("⚠️ Por favor, especifique o item que deseja usar. Exemplo: `n!boss use Remédio Antiviral`")
+            return
+
+        user_id = ctx.author.id
+        await self.ensure_player(user_id)
+
+        success, message = await self.use_consumable(user_id, item_name)
+        await ctx.send(message)
+
+    @boss.command(name="rank")
+    async def boss_rank(self, ctx):
+        """Exibe o ranking dos melhores jogadores."""
+        async with self.bot.pool.acquire() as connection:
+            top_players = await connection.fetch(
+                "SELECT user_id, xp FROM players ORDER BY xp DESC LIMIT 10"
+            )
+        ranking = "\n".join([f"<@{p['user_id']}> - {p['xp']} XP" for p in top_players])
+        embed = discord.Embed(
+            title="🏆 Ranking de Sobreviventes",
+            description=ranking,
+            color=discord.Color.gold()
+        )
+        await ctx.send(embed=embed)
+
+    @boss.command(name="help")
+    async def boss_help(self, ctx):
+        """Exibe a ajuda dos comandos relacionados ao boss."""
+        embed = discord.Embed(
+            title="📜 Ajuda dos Comandos do Boss",
+            color=discord.Color.gold()
+        )
+        embed.add_field(name="!boss", value="Invoca ou ataca o boss. Use no canal designado para combates.", inline=False)
+        embed.add_field(name="!boss status", value="Exibe o status atual do boss.", inline=False)
+        embed.add_field(name="!boss stats", value="Exibe suas estatísticas pessoais.", inline=False)
+        embed.add_field(name="!boss inventory", value="Exibe seu inventário de itens.", inline=False)
+        embed.add_field(name="!boss use <item>", value="Usa um item do seu inventário. Exemplo: `n!boss use Remédio Antiviral`", inline=False)
+        embed.add_field(name="!boss rank", value="Exibe o ranking dos melhores jogadores.", inline=False)
+        embed.add_field(name="!boss help", value="Exibe esta mensagem de ajuda.", inline=False)
+        await ctx.send(embed=embed)
+
+    @commands.command(name="rank")
+    async def rank_command(self, ctx):
+        """Exibe o ranking dos melhores jogadores."""
+        await self.boss_rank(ctx)
+
+    @commands.command(name="help")
+    async def help_command(self, ctx):
+        """Exibe a ajuda dos comandos do bot."""
+        embed = discord.Embed(
+            title="📜 Ajuda dos Comandos do Bot",
+            color=discord.Color.gold()
+        )
+        embed.add_field(name="!boss", value="Invoca ou ataca o boss. Use no canal designado para combates.", inline=False)
+        embed.add_field(name="!boss status", value="Exibe o status atual do boss.", inline=False)
+        embed.add_field(name="!boss stats", value="Exibe suas estatísticas pessoais.", inline=False)
+        embed.add_field(name="!boss inventory", value="Exibe seu inventário de itens.", inline=False)
+        embed.add_field(name="!boss use <item>", value="Usa um item do seu inventário. Exemplo: `n!boss use Remédio Antiviral`", inline=False)
+        embed.add_field(name="!boss rank", value="Exibe o ranking dos melhores jogadores.", inline=False)
+        embed.add_field(name="!boss help", value="Exibe esta mensagem de ajuda.", inline=False)
+        await ctx.send(embed=embed)
 
     async def invocar_boss(self, ctx, user_id):
         """Lógica para invocar o boss."""
@@ -231,676 +359,7 @@ class BossCog(commands.Cog):
                 "UPDATE players SET xp = xp + $1 WHERE user_id = $2",
                 amount, user_id
             )
-
-    async def update_boss_phase(self):
-        """Atualiza a fase do boss com base no HP restante."""
-        if not self.current_boss:
-            return
-
-        hp_ratio = self.current_boss["current_hp"] / self.current_boss["hp"]
-
-        # Fase 2
-        if hp_ratio <= self.current_boss["phase_two_trigger"] and self.current_boss["phase"] < 2:
-            self.current_boss["phase"] = 2
-            embed = discord.Embed(
-                title="🔥 Fase 2 do Boss!",
-                description=f"O boss **{self.current_boss['name']}** entrou na Fase 2! Habilidades mais poderosas à vista.",
-                color=discord.Color.orange()
-            )
-            await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-            await self.activate_phase_two()
-
-        # Fase 3
-        elif hp_ratio <= self.current_boss["phase_three_trigger"] and self.current_boss["phase"] < 3:
-            self.current_boss["phase"] = 3
-            embed = discord.Embed(
-                title="💀 Fase 3 do Boss!",
-                description=f"O boss **{self.current_boss['name']}** entrou na Fase 3! Preparem-se para ataques devastadores.",
-                color=discord.Color.dark_purple()
-            )
-            await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-            await self.activate_phase_three()
-
-    async def activate_phase_two(self):
-        """Ativa as habilidades da fase 2 do boss."""
-        abilities = self.current_boss["abilities"]["phase_two"]
-        for ability in abilities:
-            if ability == "Invocação de Minions" and not self.current_boss["minions_active"]:
-                await self.summon_minions()
-            elif ability == "Fúria Zumbi":
-                self.current_boss["attack_power"] += 50
-                await self.bot.get_channel(self.status_channel_id).send(
-                    f"🔥 **{self.current_boss['name']}** aumentou seu poder de ataque!"
-                )
-
-    async def activate_phase_three(self):
-        """Ativa as habilidades da fase 3 do boss."""
-        abilities = self.current_boss["abilities"]["phase_three"]
-        for ability in abilities:
-            if ability == "Explosão Viral":
-                await self.bot.get_channel(self.status_channel_id).send(
-                    f"💉 **{self.current_boss['name']}** lançou uma Explosão Viral! Todos os jogadores receberão uma infecção."
-                )
-                await self.apply_group_infection()
-            elif ability == "Ataque Devastador":
-                self.current_boss["attack_power"] += 100
-                await self.bot.get_channel(self.status_channel_id).send(
-                    f"💀 **{self.current_boss['name']}** lançou um Ataque Devastador!"
-                )
-                # Aqui você pode implementar danos aos jogadores
-
-    async def summon_minions(self):
-        """Invoca minions durante o combate."""
-        self.current_boss["minions_active"] = True
-        minion_count = random.randint(2, 4)
-        summoned_minions = random.sample(self.minions, minion_count)
-        embed = discord.Embed(
-            title="🧟 Minions Invocados!",
-            description=f"**{self.current_boss['name']}** invocou os seguintes minions: {', '.join(summoned_minions)}.",
-            color=discord.Color.dark_blue()
-        )
-        await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-        # Você pode adicionar lógica para que os minions ataquem os jogadores
-
-    async def apply_group_infection(self):
-        """Aplica infecção a todos os jogadores ativos no combate."""
-        channel = self.bot.get_channel(self.commands_channel_id)
-        if channel is None:
-            print(f"Canal com ID {self.commands_channel_id} não encontrado.")
-            return
-        infected_players = []
-        for member in channel.members:
-            if member.id != self.bot.user.id:
-                infected_players.append(member.display_name)
-                await self.apply_infection(member.id)  # Aplica infecção ao jogador
-
-        if infected_players:
-            embed = discord.Embed(
-                title="💉 Infecção em Grupo",
-                description=f"**{self.current_boss['name']}** infectou os seguintes jogadores: {', '.join(infected_players)}!",
-                color=discord.Color.dark_red()
-            )
-            await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-
-    async def boss_attack_task_loop(self):
-        """Task que faz o boss atacar periodicamente."""
-        if self.current_boss:
-            channel = self.bot.get_channel(self.status_channel_id)
-            if channel is None:
-                print(f"Canal com ID {self.status_channel_id} não encontrado.")
-                return
-
-            # Seleciona um jogador aleatório para atacar
-            channel_combat = self.bot.get_channel(self.commands_channel_id)
-            if channel_combat is None:
-                print(f"Canal com ID {self.commands_channel_id} não encontrado.")
-                return
-
-            combat_members = [member for member in channel_combat.members if member.id != self.bot.user.id]
-            if combat_members:
-                target = random.choice(combat_members)
-                damage = self.current_boss["attack_power"]
-                # Aqui você pode implementar a lógica para aplicar dano ao jogador
-                # Por exemplo, atualizar a coluna 'wounds' no banco de dados
-
-                # Simulação de dano
-                await self.award_wounds(target.id, damage)
-
-                embed = discord.Embed(
-                    title="🔨 Ataque do Boss",
-                    description=f"**{self.current_boss['name']}** atacou **{target.display_name}** causando {damage} de dano!",
-                    color=discord.Color.dark_red()
-                )
-                await channel.send(embed=embed)
-
-    @tasks.loop(minutes=5)
-    async def boss_attack_task(self):
-        """Tarefa que faz o boss atacar periodicamente."""
-        await self.boss_attack_task_loop()
-
-    async def award_wounds(self, user_id, amount):
-        """Concede ferimentos ao jogador."""
-        async with self.bot.pool.acquire() as connection:
-            await connection.execute(
-                "UPDATE players SET wounds = wounds + $1 WHERE user_id = $2",
-                amount, user_id
-            )
-            # Verificar se o jogador está morto ou outras condições
-            # Você pode adicionar lógica adicional aqui
-
-    async def update_boss_phase(self):
-        """Atualiza a fase do boss com base no HP restante."""
-        if not self.current_boss:
-            return
-
-        hp_ratio = self.current_boss["current_hp"] / self.current_boss["hp"]
-
-        # Fase 2
-        if hp_ratio <= self.current_boss["phase_two_trigger"] and self.current_boss["phase"] < 2:
-            self.current_boss["phase"] = 2
-            embed = discord.Embed(
-                title="🔥 Fase 2 do Boss!",
-                description=f"O boss **{self.current_boss['name']}** entrou na Fase 2! Habilidades mais poderosas à vista.",
-                color=discord.Color.orange()
-            )
-            await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-            await self.activate_phase_two()
-
-        # Fase 3
-        elif hp_ratio <= self.current_boss["phase_three_trigger"] and self.current_boss["phase"] < 3:
-            self.current_boss["phase"] = 3
-            embed = discord.Embed(
-                title="💀 Fase 3 do Boss!",
-                description=f"O boss **{self.current_boss['name']}** entrou na Fase 3! Preparem-se para ataques devastadores.",
-                color=discord.Color.dark_purple()
-            )
-            await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-            await self.activate_phase_three()
-
-    async def activate_phase_two(self):
-        """Ativa as habilidades da fase 2 do boss."""
-        abilities = self.current_boss["abilities"]["phase_two"]
-        for ability in abilities:
-            if ability == "Invocação de Minions" and not self.current_boss["minions_active"]:
-                await self.summon_minions()
-            elif ability == "Fúria Zumbi":
-                self.current_boss["attack_power"] += 50
-                await self.bot.get_channel(self.status_channel_id).send(
-                    f"🔥 **{self.current_boss['name']}** aumentou seu poder de ataque!"
-                )
-
-    async def activate_phase_three(self):
-        """Ativa as habilidades da fase 3 do boss."""
-        abilities = self.current_boss["abilities"]["phase_three"]
-        for ability in abilities:
-            if ability == "Explosão Viral":
-                await self.bot.get_channel(self.status_channel_id).send(
-                    f"💉 **{self.current_boss['name']}** lançou uma Explosão Viral! Todos os jogadores receberão uma infecção."
-                )
-                await self.apply_group_infection()
-            elif ability == "Ataque Devastador":
-                self.current_boss["attack_power"] += 100
-                await self.bot.get_channel(self.status_channel_id).send(
-                    f"💀 **{self.current_boss['name']}** lançou um Ataque Devastador!"
-                )
-                # Aqui você pode implementar danos aos jogadores
-
-    async def summon_minions(self):
-        """Invoca minions durante o combate."""
-        self.current_boss["minions_active"] = True
-        minion_count = random.randint(2, 4)
-        summoned_minions = random.sample(self.minions, minion_count)
-        embed = discord.Embed(
-            title="🧟 Minions Invocados!",
-            description=f"**{self.current_boss['name']}** invocou os seguintes minions: {', '.join(summoned_minions)}.",
-            color=discord.Color.dark_blue()
-        )
-        await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-        # Você pode adicionar lógica para que os minions ataquem os jogadores
-
-    async def apply_group_infection(self):
-        """Aplica infecção a todos os jogadores ativos no combate."""
-        channel = self.bot.get_channel(self.commands_channel_id)
-        if channel is None:
-            print(f"Canal com ID {self.commands_channel_id} não encontrado.")
-            return
-        infected_players = []
-        for member in channel.members:
-            if member.id != self.bot.user.id:
-                infected_players.append(member.display_name)
-                await self.apply_infection(member.id)  # Aplica infecção ao jogador
-
-        if infected_players:
-            embed = discord.Embed(
-                title="💉 Infecção em Grupo",
-                description=f"**{self.current_boss['name']}** infectou os seguintes jogadores: {', '.join(infected_players)}!",
-                color=discord.Color.dark_red()
-            )
-            await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-
-    async def boss_attack_task_loop(self):
-        """Task que faz o boss atacar periodicamente."""
-        if self.current_boss:
-            channel = self.bot.get_channel(self.status_channel_id)
-            if channel is None:
-                print(f"Canal com ID {self.status_channel_id} não encontrado.")
-                return
-
-            # Seleciona um jogador aleatório para atacar
-            channel_combat = self.bot.get_channel(self.commands_channel_id)
-            if channel_combat is None:
-                print(f"Canal com ID {self.commands_channel_id} não encontrado.")
-                return
-
-            combat_members = [member for member in channel_combat.members if member.id != self.bot.user.id]
-            if combat_members:
-                target = random.choice(combat_members)
-                damage = self.current_boss["attack_power"]
-                # Aqui você pode implementar a lógica para aplicar dano ao jogador
-                # Por exemplo, atualizar a coluna 'wounds' no banco de dados
-
-                # Simulação de dano
-                await self.award_wounds(target.id, damage)
-
-                embed = discord.Embed(
-                    title="🔨 Ataque do Boss",
-                    description=f"**{self.current_boss['name']}** atacou **{target.display_name}** causando {damage} de dano!",
-                    color=discord.Color.dark_red()
-                )
-                await channel.send(embed=embed)
-
-    @tasks.loop(minutes=5)
-    async def boss_attack_task(self):
-        """Tarefa que faz o boss atacar periodicamente."""
-        await self.boss_attack_task_loop()
-
-    async def award_wounds(self, user_id, amount):
-        """Concede ferimentos ao jogador."""
-        async with self.bot.pool.acquire() as connection:
-            await connection.execute(
-                "UPDATE players SET wounds = wounds + $1 WHERE user_id = $2",
-                amount, user_id
-            )
-            # Verificar se o jogador está morto ou outras condições
-            # Você pode adicionar lógica adicional aqui
-
-    async def update_boss_phase(self):
-        """Atualiza a fase do boss com base no HP restante."""
-        if not self.current_boss:
-            return
-
-        hp_ratio = self.current_boss["current_hp"] / self.current_boss["hp"]
-
-        # Fase 2
-        if hp_ratio <= self.current_boss["phase_two_trigger"] and self.current_boss["phase"] < 2:
-            self.current_boss["phase"] = 2
-            embed = discord.Embed(
-                title="🔥 Fase 2 do Boss!",
-                description=f"O boss **{self.current_boss['name']}** entrou na Fase 2! Habilidades mais poderosas à vista.",
-                color=discord.Color.orange()
-            )
-            await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-            await self.activate_phase_two()
-
-        # Fase 3
-        elif hp_ratio <= self.current_boss["phase_three_trigger"] and self.current_boss["phase"] < 3:
-            self.current_boss["phase"] = 3
-            embed = discord.Embed(
-                title="💀 Fase 3 do Boss!",
-                description=f"O boss **{self.current_boss['name']}** entrou na Fase 3! Preparem-se para ataques devastadores.",
-                color=discord.Color.dark_purple()
-            )
-            await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-            await self.activate_phase_three()
-
-    async def activate_phase_two(self):
-        """Ativa as habilidades da fase 2 do boss."""
-        abilities = self.current_boss["abilities"]["phase_two"]
-        for ability in abilities:
-            if ability == "Invocação de Minions" and not self.current_boss["minions_active"]:
-                await self.summon_minions()
-            elif ability == "Fúria Zumbi":
-                self.current_boss["attack_power"] += 50
-                await self.bot.get_channel(self.status_channel_id).send(
-                    f"🔥 **{self.current_boss['name']}** aumentou seu poder de ataque!"
-                )
-
-    async def activate_phase_three(self):
-        """Ativa as habilidades da fase 3 do boss."""
-        abilities = self.current_boss["abilities"]["phase_three"]
-        for ability in abilities:
-            if ability == "Explosão Viral":
-                await self.bot.get_channel(self.status_channel_id).send(
-                    f"💉 **{self.current_boss['name']}** lançou uma Explosão Viral! Todos os jogadores receberão uma infecção."
-                )
-                await self.apply_group_infection()
-            elif ability == "Ataque Devastador":
-                self.current_boss["attack_power"] += 100
-                await self.bot.get_channel(self.status_channel_id).send(
-                    f"💀 **{self.current_boss['name']}** lançou um Ataque Devastador!"
-                )
-                # Aqui você pode implementar danos aos jogadores
-
-    async def summon_minions(self):
-        """Invoca minions durante o combate."""
-        self.current_boss["minions_active"] = True
-        minion_count = random.randint(2, 4)
-        summoned_minions = random.sample(self.minions, minion_count)
-        embed = discord.Embed(
-            title="🧟 Minions Invocados!",
-            description=f"**{self.current_boss['name']}** invocou os seguintes minions: {', '.join(summoned_minions)}.",
-            color=discord.Color.dark_blue()
-        )
-        await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-        # Você pode adicionar lógica para que os minions ataquem os jogadores
-
-    async def apply_group_infection(self):
-        """Aplica infecção a todos os jogadores ativos no combate."""
-        channel = self.bot.get_channel(self.commands_channel_id)
-        if channel is None:
-            print(f"Canal com ID {self.commands_channel_id} não encontrado.")
-            return
-        infected_players = []
-        for member in channel.members:
-            if member.id != self.bot.user.id:
-                infected_players.append(member.display_name)
-                await self.apply_infection(member.id)  # Aplica infecção ao jogador
-
-        if infected_players:
-            embed = discord.Embed(
-                title="💉 Infecção em Grupo",
-                description=f"**{self.current_boss['name']}** infectou os seguintes jogadores: {', '.join(infected_players)}!",
-                color=discord.Color.dark_red()
-            )
-            await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-
-    async def boss_attack_task_loop(self):
-        """Task que faz o boss atacar periodicamente."""
-        if self.current_boss:
-            channel = self.bot.get_channel(self.status_channel_id)
-            if channel is None:
-                print(f"Canal com ID {self.status_channel_id} não encontrado.")
-                return
-
-            # Seleciona um jogador aleatório para atacar
-            channel_combat = self.bot.get_channel(self.commands_channel_id)
-            if channel_combat is None:
-                print(f"Canal com ID {self.commands_channel_id} não encontrado.")
-                return
-
-            combat_members = [member for member in channel_combat.members if member.id != self.bot.user.id]
-            if combat_members:
-                target = random.choice(combat_members)
-                damage = self.current_boss["attack_power"]
-                # Aqui você pode implementar a lógica para aplicar dano ao jogador
-                # Por exemplo, atualizar a coluna 'wounds' no banco de dados
-
-                # Simulação de dano
-                await self.award_wounds(target.id, damage)
-
-                embed = discord.Embed(
-                    title="🔨 Ataque do Boss",
-                    description=f"**{self.current_boss['name']}** atacou **{target.display_name}** causando {damage} de dano!",
-                    color=discord.Color.dark_red()
-                )
-                await channel.send(embed=embed)
-
-    @tasks.loop(minutes=5)
-    async def boss_attack_task(self):
-        """Tarefa que faz o boss atacar periodicamente."""
-        await self.boss_attack_task_loop()
-
-    async def award_wounds(self, user_id, amount):
-        """Concede ferimentos ao jogador."""
-        async with self.bot.pool.acquire() as connection:
-            await connection.execute(
-                "UPDATE players SET wounds = wounds + $1 WHERE user_id = $2",
-                amount, user_id
-            )
-            # Verificar se o jogador está morto ou outras condições
-            # Você pode adicionar lógica adicional aqui
-
-    async def update_boss_phase(self):
-        """Atualiza a fase do boss com base no HP restante."""
-        if not self.current_boss:
-            return
-
-        hp_ratio = self.current_boss["current_hp"] / self.current_boss["hp"]
-
-        # Fase 2
-        if hp_ratio <= self.current_boss["phase_two_trigger"] and self.current_boss["phase"] < 2:
-            self.current_boss["phase"] = 2
-            embed = discord.Embed(
-                title="🔥 Fase 2 do Boss!",
-                description=f"O boss **{self.current_boss['name']}** entrou na Fase 2! Habilidades mais poderosas à vista.",
-                color=discord.Color.orange()
-            )
-            await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-            await self.activate_phase_two()
-
-        # Fase 3
-        elif hp_ratio <= self.current_boss["phase_three_trigger"] and self.current_boss["phase"] < 3:
-            self.current_boss["phase"] = 3
-            embed = discord.Embed(
-                title="💀 Fase 3 do Boss!",
-                description=f"O boss **{self.current_boss['name']}** entrou na Fase 3! Preparem-se para ataques devastadores.",
-                color=discord.Color.dark_purple()
-            )
-            await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-            await self.activate_phase_three()
-
-    async def activate_phase_two(self):
-        """Ativa as habilidades da fase 2 do boss."""
-        abilities = self.current_boss["abilities"]["phase_two"]
-        for ability in abilities:
-            if ability == "Invocação de Minions" and not self.current_boss["minions_active"]:
-                await self.summon_minions()
-            elif ability == "Fúria Zumbi":
-                self.current_boss["attack_power"] += 50
-                await self.bot.get_channel(self.status_channel_id).send(
-                    f"🔥 **{self.current_boss['name']}** aumentou seu poder de ataque!"
-                )
-
-    async def activate_phase_three(self):
-        """Ativa as habilidades da fase 3 do boss."""
-        abilities = self.current_boss["abilities"]["phase_three"]
-        for ability in abilities:
-            if ability == "Explosão Viral":
-                await self.bot.get_channel(self.status_channel_id).send(
-                    f"💉 **{self.current_boss['name']}** lançou uma Explosão Viral! Todos os jogadores receberão uma infecção."
-                )
-                await self.apply_group_infection()
-            elif ability == "Ataque Devastador":
-                self.current_boss["attack_power"] += 100
-                await self.bot.get_channel(self.status_channel_id).send(
-                    f"💀 **{self.current_boss['name']}** lançou um Ataque Devastador!"
-                )
-                # Aqui você pode implementar danos aos jogadores
-
-    async def summon_minions(self):
-        """Invoca minions durante o combate."""
-        self.current_boss["minions_active"] = True
-        minion_count = random.randint(2, 4)
-        summoned_minions = random.sample(self.minions, minion_count)
-        embed = discord.Embed(
-            title="🧟 Minions Invocados!",
-            description=f"**{self.current_boss['name']}** invocou os seguintes minions: {', '.join(summoned_minions)}.",
-            color=discord.Color.dark_blue()
-        )
-        await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-        # Você pode adicionar lógica para que os minions ataquem os jogadores
-
-    async def apply_group_infection(self):
-        """Aplica infecção a todos os jogadores ativos no combate."""
-        channel = self.bot.get_channel(self.commands_channel_id)
-        if channel is None:
-            print(f"Canal com ID {self.commands_channel_id} não encontrado.")
-            return
-        infected_players = []
-        for member in channel.members:
-            if member.id != self.bot.user.id:
-                infected_players.append(member.display_name)
-                await self.apply_infection(member.id)  # Aplica infecção ao jogador
-
-        if infected_players:
-            embed = discord.Embed(
-                title="💉 Infecção em Grupo",
-                description=f"**{self.current_boss['name']}** infectou os seguintes jogadores: {', '.join(infected_players)}!",
-                color=discord.Color.dark_red()
-            )
-            await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-
-    async def boss_attack_task_loop(self):
-        """Task que faz o boss atacar periodicamente."""
-        if self.current_boss:
-            channel = self.bot.get_channel(self.status_channel_id)
-            if channel is None:
-                print(f"Canal com ID {self.status_channel_id} não encontrado.")
-                return
-
-            # Seleciona um jogador aleatório para atacar
-            channel_combat = self.bot.get_channel(self.commands_channel_id)
-            if channel_combat is None:
-                print(f"Canal com ID {self.commands_channel_id} não encontrado.")
-                return
-
-            combat_members = [member for member in channel_combat.members if member.id != self.bot.user.id]
-            if combat_members:
-                target = random.choice(combat_members)
-                damage = self.current_boss["attack_power"]
-                # Aqui você pode implementar a lógica para aplicar dano ao jogador
-                # Por exemplo, atualizar a coluna 'wounds' no banco de dados
-
-                # Simulação de dano
-                await self.award_wounds(target.id, damage)
-
-                embed = discord.Embed(
-                    title="🔨 Ataque do Boss",
-                    description=f"**{self.current_boss['name']}** atacou **{target.display_name}** causando {damage} de dano!",
-                    color=discord.Color.dark_red()
-                )
-                await channel.send(embed=embed)
-
-    @tasks.loop(minutes=5)
-    async def boss_attack_task(self):
-        """Tarefa que faz o boss atacar periodicamente."""
-        await self.boss_attack_task_loop()
-
-    async def award_wounds(self, user_id, amount):
-        """Concede ferimentos ao jogador."""
-        async with self.bot.pool.acquire() as connection:
-            await connection.execute(
-                "UPDATE players SET wounds = wounds + $1 WHERE user_id = $2",
-                amount, user_id
-            )
-            # Verificar se o jogador está morto ou outras condições
-            # Você pode adicionar lógica adicional aqui
-
-    async def update_boss_phase(self):
-        """Atualiza a fase do boss com base no HP restante."""
-        if not self.current_boss:
-            return
-
-        hp_ratio = self.current_boss["current_hp"] / self.current_boss["hp"]
-
-        # Fase 2
-        if hp_ratio <= self.current_boss["phase_two_trigger"] and self.current_boss["phase"] < 2:
-            self.current_boss["phase"] = 2
-            embed = discord.Embed(
-                title="🔥 Fase 2 do Boss!",
-                description=f"O boss **{self.current_boss['name']}** entrou na Fase 2! Habilidades mais poderosas à vista.",
-                color=discord.Color.orange()
-            )
-            await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-            await self.activate_phase_two()
-
-        # Fase 3
-        elif hp_ratio <= self.current_boss["phase_three_trigger"] and self.current_boss["phase"] < 3:
-            self.current_boss["phase"] = 3
-            embed = discord.Embed(
-                title="💀 Fase 3 do Boss!",
-                description=f"O boss **{self.current_boss['name']}** entrou na Fase 3! Preparem-se para ataques devastadores.",
-                color=discord.Color.dark_purple()
-            )
-            await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-            await self.activate_phase_three()
-
-    async def activate_phase_two(self):
-        """Ativa as habilidades da fase 2 do boss."""
-        abilities = self.current_boss["abilities"]["phase_two"]
-        for ability in abilities:
-            if ability == "Invocação de Minions" and not self.current_boss["minions_active"]:
-                await self.summon_minions()
-            elif ability == "Fúria Zumbi":
-                self.current_boss["attack_power"] += 50
-                await self.bot.get_channel(self.status_channel_id).send(
-                    f"🔥 **{self.current_boss['name']}** aumentou seu poder de ataque!"
-                )
-
-    async def activate_phase_three(self):
-        """Ativa as habilidades da fase 3 do boss."""
-        abilities = self.current_boss["abilities"]["phase_three"]
-        for ability in abilities:
-            if ability == "Explosão Viral":
-                await self.bot.get_channel(self.status_channel_id).send(
-                    f"💉 **{self.current_boss['name']}** lançou uma Explosão Viral! Todos os jogadores receberão uma infecção."
-                )
-                await self.apply_group_infection()
-            elif ability == "Ataque Devastador":
-                self.current_boss["attack_power"] += 100
-                await self.bot.get_channel(self.status_channel_id).send(
-                    f"💀 **{self.current_boss['name']}** lançou um Ataque Devastador!"
-                )
-                # Aqui você pode implementar danos aos jogadores
-
-    async def summon_minions(self):
-        """Invoca minions durante o combate."""
-        self.current_boss["minions_active"] = True
-        minion_count = random.randint(2, 4)
-        summoned_minions = random.sample(self.minions, minion_count)
-        embed = discord.Embed(
-            title="🧟 Minions Invocados!",
-            description=f"**{self.current_boss['name']}** invocou os seguintes minions: {', '.join(summoned_minions)}.",
-            color=discord.Color.dark_blue()
-        )
-        await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-        # Você pode adicionar lógica para que os minions ataquem os jogadores
-
-    async def apply_group_infection(self):
-        """Aplica infecção a todos os jogadores ativos no combate."""
-        channel = self.bot.get_channel(self.commands_channel_id)
-        if channel is None:
-            print(f"Canal com ID {self.commands_channel_id} não encontrado.")
-            return
-        infected_players = []
-        for member in channel.members:
-            if member.id != self.bot.user.id:
-                infected_players.append(member.display_name)
-                await self.apply_infection(member.id)  # Aplica infecção ao jogador
-
-        if infected_players:
-            embed = discord.Embed(
-                title="💉 Infecção em Grupo",
-                description=f"**{self.current_boss['name']}** infectou os seguintes jogadores: {', '.join(infected_players)}!",
-                color=discord.Color.dark_red()
-            )
-            await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-
-    async def boss_attack_task_loop(self):
-        """Task que faz o boss atacar periodicamente."""
-        if self.current_boss:
-            channel = self.bot.get_channel(self.status_channel_id)
-            if channel is None:
-                print(f"Canal com ID {self.status_channel_id} não encontrado.")
-                return
-
-            # Seleciona um jogador aleatório para atacar
-            channel_combat = self.bot.get_channel(self.commands_channel_id)
-            if channel_combat is None:
-                print(f"Canal com ID {self.commands_channel_id} não encontrado.")
-                return
-
-            combat_members = [member for member in channel_combat.members if member.id != self.bot.user.id]
-            if combat_members:
-                target = random.choice(combat_members)
-                damage = self.current_boss["attack_power"]
-                # Aqui você pode implementar a lógica para aplicar dano ao jogador
-                # Por exemplo, atualizar a coluna 'wounds' no banco de dados
-
-                # Simulação de dano
-                await self.award_wounds(target.id, damage)
-
-                embed = discord.Embed(
-                    title="🔨 Ataque do Boss",
-                    description=f"**{self.current_boss['name']}** atacou **{target.display_name}** causando {damage} de dano!",
-                    color=discord.Color.dark_red()
-                )
-                await channel.send(embed=embed)
-
-    @tasks.loop(minutes=5)
-    async def boss_attack_task(self):
-        """Tarefa que faz o boss atacar periodicamente."""
-        await self.boss_attack_task_loop()
+        await self.check_level_up(user_id)
 
     async def award_wounds(self, user_id, amount):
         """Concede ferimentos ao jogador."""
@@ -911,193 +370,6 @@ class BossCog(commands.Cog):
             )
             # Aqui você pode adicionar lógica para verificar se o jogador está morto ou outras condições
 
-    async def apply_infection(self, user_id):
-        """Aplica infecção ao jogador com base em chance."""
-        chance = random.randint(1, 100)
-        if chance <= 20:  # 20% de chance de infecção
-            async with self.bot.pool.acquire() as connection:
-                await connection.execute("UPDATE players SET infected = TRUE WHERE user_id = $1", user_id)
-            member = self.bot.get_user(user_id)
-            if member:
-                await self.bot.get_channel(self.status_channel_id).send(
-                    f"⚠️ {member.display_name} foi infectado durante o combate!"
-                )
-
-    async def apply_damage_debuff(self, user_id):
-        """Aplica debuff de dano ao jogador com base em chance."""
-        chance = random.randint(1, 100)
-        if chance <= 15:  # 15% de chance de debuff
-            async with self.bot.pool.acquire() as connection:
-                await connection.execute("UPDATE players SET damage_debuff = TRUE WHERE user_id = $1", user_id)
-            member = self.bot.get_user(user_id)
-            if member:
-                await self.bot.get_channel(self.status_channel_id).send(
-                    f"⚠️ {member.display_name} recebeu um debuff de dano!"
-                )
-
-    async def award_xp(self, user_id, amount):
-        """Concede XP ao jogador."""
-        async with self.bot.pool.acquire() as connection:
-            await connection.execute(
-                "UPDATE players SET xp = xp + $1 WHERE user_id = $2",
-                amount, user_id
-            )
-
-    async def award_money(self, user_id, amount):
-        """Concede dinheiro ao jogador."""
-        async with self.bot.pool.acquire() as connection:
-            await connection.execute(
-                "UPDATE players SET money = money + $1 WHERE user_id = $2",
-                amount, user_id
-            )
-
-    @commands.command(name="boss status")
-    async def boss_status(self, ctx):
-        """Exibe o status atual do boss."""
-        if not self.current_boss:
-            await ctx.send("⚔️ Não há nenhum boss ativo no momento.")
-            return
-
-        embed = discord.Embed(
-            title=f"⚔️ Status do Boss: {self.current_boss['name']}",
-            description=f"**HP:** {self.current_boss['current_hp']}/{self.current_boss['hp']}\n"
-                        f"**Fase:** {self.current_boss['phase']}",
-            color=discord.Color.blue()
-        )
-        await ctx.send(embed=embed)
-
-    @commands.command(name="boss stats")
-    async def boss_stats(self, ctx):
-        """Exibe as estatísticas do jogador."""
-        user_id = ctx.author.id
-        await self.ensure_player(user_id)
-
-        async with self.bot.pool.acquire() as connection:
-            result = await connection.fetchrow("SELECT * FROM players WHERE user_id = $1", user_id)
-
-        if not result:
-            await ctx.send("⚠️ Não foi possível encontrar seu perfil. Tente novamente.")
-            return
-
-        embed = discord.Embed(
-            title=f"📊 Estatísticas de {ctx.author.display_name}",
-            color=discord.Color.purple()
-        )
-        embed.add_field(name="Nível", value=result['level'], inline=True)
-        embed.add_field(name="XP", value=result['xp'], inline=True)
-        embed.add_field(name="Dinheiro", value=result['money'], inline=True)
-        embed.add_field(name="Ferimentos", value=result['wounds'], inline=True)
-        embed.add_field(name="Infectado", value="Sim" if result['infected'] else "Não", inline=True)
-        embed.add_field(name="Debuff de Dano", value="Sim" if result['damage_debuff'] else "Não", inline=True)
-        await ctx.send(embed=embed)
-
-    @commands.command(name="boss inventory")
-    async def boss_inventory(self, ctx):
-        """Exibe o inventário do jogador."""
-        user_id = ctx.author.id
-        await self.ensure_player(user_id)
-
-        async with self.bot.pool.acquire() as connection:
-            items = await connection.fetch("SELECT item FROM inventory WHERE user_id = $1", user_id)
-
-        if not items:
-            await ctx.send("📦 Seu inventário está vazio.")
-            return
-
-        inventory_list = "\n".join([f"- {item['item']}" for item in items])
-        embed = discord.Embed(
-            title=f"📦 Inventário de {ctx.author.display_name}",
-            description=inventory_list,
-            color=discord.Color.green()
-        )
-        await ctx.send(embed=embed)
-
-    @commands.command(name="boss use")
-    async def boss_use_item(self, ctx, *, item_name: str = None):
-        """Permite que o jogador use um item do inventário."""
-        if not item_name:
-            await ctx.send("⚠️ Por favor, especifique o item que deseja usar. Exemplo: `n!boss use Remédio Antiviral`")
-            return
-
-        user_id = ctx.author.id
-        await self.ensure_player(user_id)
-
-        async with self.bot.pool.acquire() as connection:
-            # Verifica se o jogador possui o item
-            item = await connection.fetchrow(
-                "SELECT * FROM inventory WHERE user_id = $1 AND item ILIKE $2",
-                user_id, f"%{item_name}%"
-            )
-
-            if not item:
-                await ctx.send(f"⚠️ Você não possui o item **{item_name}** no seu inventário.")
-                return
-
-            # Remove o item do inventário
-            await connection.execute(
-                "DELETE FROM inventory WHERE id = $1",
-                item['id']
-            )
-
-            # Aplica o efeito do item
-            if item['item'] == self.consumables['antiviral']:
-                # Remove infecção
-                await connection.execute(
-                    "UPDATE players SET infected = FALSE WHERE user_id = $1",
-                    user_id
-                )
-                await ctx.send(f"💊 **{ctx.author.display_name}** usou **{item['item']}** e curou a infecção!")
-            elif item['item'] == self.consumables['soro']:
-                # Remove debuff de dano
-                await connection.execute(
-                    "UPDATE players SET damage_debuff = FALSE WHERE user_id = $1",
-                    user_id
-                )
-                await ctx.send(f"💉 **{ctx.author.display_name}** usou **{item['item']}** e removeu o debuff de dano!")
-            else:
-                await ctx.send(f"🔮 **{ctx.author.display_name}** usou **{item['item']}**, mas não há efeitos definidos para este item.")
-
-    @commands.command(name="boss help")
-    async def boss_help(self, ctx):
-        """Exibe a ajuda dos comandos relacionados ao boss."""
-        embed = discord.Embed(
-            title="📜 Ajuda dos Comandos do Boss",
-            color=discord.Color.gold()
-        )
-        embed.add_field(name="!boss", value="Invoca ou ataca o boss. Use no canal designado para combates.", inline=False)
-        embed.add_field(name="!boss status", value="Exibe o status atual do boss.", inline=False)
-        embed.add_field(name="!boss stats", value="Exibe suas estatísticas pessoais.", inline=False)
-        embed.add_field(name="!boss inventory", value="Exibe seu inventário de itens.", inline=False)
-        embed.add_field(name="!boss use <item>", value="Usa um item do seu inventário. Exemplo: `n!boss use Remédio Antiviral`", inline=False)
-        embed.add_field(name="!boss help", value="Exibe esta mensagem de ajuda.", inline=False)
-        await ctx.send(embed=embed)
-
-    @commands.command(name="profile")
-    async def profile_command(self, ctx):
-        """Exibe o perfil do jogador."""
-        await self.boss_stats(ctx)  # Reutiliza a função de stats
-
-    @commands.command(name="inventory")
-    async def inventory_command(self, ctx):
-        """Exibe o inventário do jogador."""
-        await self.boss_inventory(ctx)  # Reutiliza a função de inventário
-
-    @commands.command(name="use")
-    async def use_item_command(self, ctx, *, item_name: str = None):
-        """Permite que o jogador use um item do inventário."""
-        await self.boss_use_item(ctx, item_name=item_name)  # Reutiliza a função de usar item
-
-    @commands.command(name="stats")
-    async def stats_command(self, ctx):
-        """Exibe as estatísticas do jogador."""
-        await self.boss_stats(ctx)  # Reutiliza a função de stats
-
-    @commands.command(name="help")
-    async def help_command(self, ctx):
-        """Exibe a ajuda dos comandos do bot."""
-        await self.boss_help(ctx)  # Reutiliza a função de ajuda
-
-    # Sistema de XP e Level
     async def check_level_up(self, user_id):
         """Verifica se o jogador subiu de nível."""
         async with self.bot.pool.acquire() as connection:
@@ -1118,7 +390,6 @@ class BossCog(commands.Cog):
                             f"🎉 Parabéns {member.display_name}! Você subiu para o nível {level + 1}!"
                         )
 
-    # Sistema de uso de consumíveis
     async def use_consumable(self, user_id, item_name):
         """Permite que o jogador use um consumível."""
         async with self.bot.pool.acquire() as connection:
@@ -1155,689 +426,131 @@ class BossCog(commands.Cog):
             else:
                 return False, f"🔮 O item **{item['item']}** não possui efeitos definidos."
 
-    # Verificar se há uma invocação de boss ativa e garantir que múltiplos usuários possam interagir
-    @commands.command(name="boss")
-    @commands.cooldown(1, 3600, commands.BucketType.user)  # 1 hora de cooldown por usuário
-    async def boss_command(self, ctx):
-        # ... (Manter o código existente conforme acima)
-        pass  # O código já está detalhado anteriormente
-
-    @commands.command(name="rank")
-    async def rank_command(self, ctx):
-        """Exibe o ranking dos melhores jogadores."""
-        async with self.bot.pool.acquire() as connection:
-            top_players = await connection.fetch(
-                "SELECT user_id, xp FROM players ORDER BY xp DESC LIMIT 10"
-            )
-        ranking = "\n".join([f"<@{p['user_id']}> - {p['xp']} XP" for p in top_players])
-        embed = discord.Embed(
-            title="🏆 Ranking de Sobreviventes",
-            description=ranking,
-            color=discord.Color.gold()
-        )
-        await ctx.send(embed=embed)
-
-    # Sistema de inventário e uso de consumíveis
-    @commands.command(name="use")
-    async def use_item_command(self, ctx, *, item_name: str = None):
-        """Permite que o jogador use um item do inventário."""
-        if not item_name:
-            await ctx.send("⚠️ Por favor, especifique o item que deseja usar. Exemplo: `n!use Remédio Antiviral`")
-            return
-
-        user_id = ctx.author.id
-        await self.ensure_player(user_id)
-
-        success, message = await self.use_consumable(user_id, item_name)
-        await ctx.send(message)
-
-    # Comandos de perfil e inventário
-    @commands.command(name="profile")
-    async def profile_command(self, ctx):
-        """Exibe o perfil do jogador."""
-        await self.boss_stats(ctx)  # Reutiliza a função de stats
-
-    @commands.command(name="inventory")
-    async def inventory_command(self, ctx):
-        """Exibe o inventário do jogador."""
-        await self.boss_inventory(ctx)  # Reutiliza a função de inventário
-
-    @commands.command(name="stats")
-    async def stats_command(self, ctx):
-        """Exibe as estatísticas do jogador."""
-        await self.boss_stats(ctx)  # Reutiliza a função de stats
-
-    @commands.command(name="help")
-    async def help_command(self, ctx):
-        """Exibe a ajuda dos comandos do bot."""
-        await self.boss_help(ctx)  # Reutiliza a função de ajuda
-
-    @commands.command(name="boss help")
-    async def boss_help_command(self, ctx):
-        """Exibe a ajuda dos comandos relacionados ao boss."""
-        await self.boss_help(ctx)  # Reutiliza a função de ajuda
-
-    @commands.command(name="boss rank")
-    async def boss_rank_command(self, ctx):
-        """Exibe o ranking dos melhores jogadores."""
-        await self.rank_command(ctx)
-
-    @commands.command(name="boss use")
-    async def boss_use_item_command(self, ctx, *, item_name: str = None):
-        """Permite que o jogador use um item do inventário."""
-        await self.boss_use_item(ctx, item_name=item_name)
-
-    # Sistema de verificação e atualização de perfil
-    @commands.command(name="boss profile")
-    async def boss_profile_command(self, ctx):
-        """Exibe o perfil do jogador."""
-        await self.profile_command(ctx)
-
-    # Sistema de verificação de inventário
-    @commands.command(name="boss inventory")
-    async def boss_inventory_command(self, ctx):
-        """Exibe o inventário do jogador."""
-        await self.inventory_command(ctx)
-
-    # Sistema de exibição de estatísticas
-    @commands.command(name="boss stats")
-    async def boss_stats_command(self, ctx):
-        """Exibe as estatísticas do jogador."""
-        await self.stats_command(ctx)
-
-    # Sistema de ajuda aprimorado
-    @commands.command(name="boss help")
-    async def boss_help_command(self, ctx):
-        """Exibe a ajuda dos comandos relacionados ao boss."""
-        await self.help_command(ctx)
-
-    # Sistema de ranking aprimorado
-    @commands.command(name="boss rank")
-    async def boss_rank_command(self, ctx):
-        """Exibe o ranking dos melhores jogadores."""
-        await self.rank_command(ctx)
-
-    # Sistema de uso de consumíveis aprimorado
-    @commands.command(name="boss use")
-    async def boss_use_item_command(self, ctx, *, item_name: str = None):
-        """Permite que o jogador use um item do inventário."""
-        await self.use_item_command(ctx, item_name=item_name)
-
-    # Sistema de atualização de ranking a cada 2 horas
-    @tasks.loop(hours=2)
-    async def rank_update(self):
-        async with self.bot.pool.acquire() as connection:
-            top_players = await connection.fetch(
-                "SELECT user_id, xp FROM players ORDER BY xp DESC LIMIT 10"
-            )
-        ranking = "\n".join([f"<@{p['user_id']}> - {p['xp']} XP" for p in top_players])
-        embed = discord.Embed(
-            title="🏆 Ranking de Sobreviventes",
-            description=ranking,
-            color=discord.Color.gold()
-        )
-        await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-
-    @rank_update.before_loop
-    async def before_rank_update(self):
-        await self.bot.wait_until_ready()
-
-    # Sistema de status do bot a cada 10 minutos
-    @tasks.loop(minutes=10)
-    async def change_status(self):
-        status_messages = [
-            "sobrevivendo ao apocalipse...",
-            "explorando novas bases...",
-            "caçando zumbis...",
-            "coletando recursos...",
-            "protegendo os sobreviventes...",
-            "negociando embers...",
-            "construindo alianças...",
-            "lutando contra hordas...",
-            "explorando o mapa...",
-            "realizando missões..."
-        ]
-        new_status = random.choice(status_messages)
-        await self.bot.change_presence(activity=discord.Game(new_status))
-
-    @change_status.before_loop
-    async def before_change_status(self):
-        await self.bot.wait_until_ready()
-
-    @commands.command(name="boss help")
-    async def boss_help(self, ctx):
-        """Exibe a ajuda dos comandos relacionados ao boss."""
-        embed = discord.Embed(
-            title="📜 Ajuda dos Comandos do Boss",
-            color=discord.Color.gold()
-        )
-        embed.add_field(name="!boss", value="Invoca ou ataca o boss. Use no canal designado para combates.", inline=False)
-        embed.add_field(name="!boss status", value="Exibe o status atual do boss.", inline=False)
-        embed.add_field(name="!boss stats", value="Exibe suas estatísticas pessoais.", inline=False)
-        embed.add_field(name="!boss inventory", value="Exibe seu inventário de itens.", inline=False)
-        embed.add_field(name="!boss use <item>", value="Usa um item do seu inventário. Exemplo: `n!boss use Remédio Antiviral`", inline=False)
-        embed.add_field(name="!boss rank", value="Exibe o ranking dos melhores jogadores.", inline=False)
-        embed.add_field(name="!boss help", value="Exibe esta mensagem de ajuda.", inline=False)
-        await ctx.send(embed=embed)
-
-    @commands.command(name="boss stats")
-    async def boss_stats(self, ctx):
-        """Exibe as estatísticas do jogador."""
-        user_id = ctx.author.id
-        await self.ensure_player(user_id)
-
-        async with self.bot.pool.acquire() as connection:
-            result = await connection.fetchrow("SELECT * FROM players WHERE user_id = $1", user_id)
-
-        if not result:
-            await ctx.send("⚠️ Não foi possível encontrar seu perfil. Tente novamente.")
-            return
-
-        embed = discord.Embed(
-            title=f"📊 Estatísticas de {ctx.author.display_name}",
-            color=discord.Color.purple()
-        )
-        embed.add_field(name="Nível", value=result['level'], inline=True)
-        embed.add_field(name="XP", value=result['xp'], inline=True)
-        embed.add_field(name="Dinheiro", value=result['money'], inline=True)
-        embed.add_field(name="Ferimentos", value=result['wounds'], inline=True)
-        embed.add_field(name="Infectado", value="Sim" if result['infected'] else "Não", inline=True)
-        embed.add_field(name="Debuff de Dano", value="Sim" if result['damage_debuff'] else "Não", inline=True)
-        await ctx.send(embed=embed)
-
-    @commands.command(name="boss inventory")
-    async def boss_inventory(self, ctx):
-        """Exibe o inventário do jogador."""
-        user_id = ctx.author.id
-        await self.ensure_player(user_id)
-
-        async with self.bot.pool.acquire() as connection:
-            items = await connection.fetch("SELECT item FROM inventory WHERE user_id = $1", user_id)
-
-        if not items:
-            await ctx.send("📦 Seu inventário está vazio.")
-            return
-
-        inventory_list = "\n".join([f"- {item['item']}" for item in items])
-        embed = discord.Embed(
-            title=f"📦 Inventário de {ctx.author.display_name}",
-            description=inventory_list,
-            color=discord.Color.green()
-        )
-        await ctx.send(embed=embed)
-
-    @commands.command(name="boss use")
-    async def boss_use_item(self, ctx, *, item_name: str = None):
-        """Permite que o jogador use um item do inventário."""
-        if not item_name:
-            await ctx.send("⚠️ Por favor, especifique o item que deseja usar. Exemplo: `n!boss use Remédio Antiviral`")
-            return
-
-        user_id = ctx.author.id
-        await self.ensure_player(user_id)
-
-        success, message = await self.use_consumable(user_id, item_name)
-        await ctx.send(message)
-
-    @commands.command(name="boss stats")
-    async def boss_stats_command(self, ctx):
-        """Exibe as estatísticas do jogador."""
-        await self.boss_stats(ctx)
-
-    @commands.command(name="boss inventory")
-    async def boss_inventory_command(self, ctx):
-        """Exibe o inventário do jogador."""
-        await self.boss_inventory(ctx)
-
-    @commands.command(name="boss rank")
-    async def boss_rank_command(self, ctx):
-        """Exibe o ranking dos melhores jogadores."""
-        await self.rank_command(ctx)
-
-    @commands.command(name="boss help")
-    async def boss_help_command(self, ctx):
-        """Exibe a ajuda dos comandos relacionados ao boss."""
-        await self.boss_help(ctx)
-
-    # Sistema de ajuda aprimorado
-    @commands.command(name="boss help")
-    async def boss_help(self, ctx):
-        """Exibe a ajuda dos comandos relacionados ao boss."""
-        embed = discord.Embed(
-            title="📜 Ajuda dos Comandos do Boss",
-            color=discord.Color.gold()
-        )
-        embed.add_field(name="!boss", value="Invoca ou ataca o boss. Use no canal designado para combates.", inline=False)
-        embed.add_field(name="!boss status", value="Exibe o status atual do boss.", inline=False)
-        embed.add_field(name="!boss stats", value="Exibe suas estatísticas pessoais.", inline=False)
-        embed.add_field(name="!boss inventory", value="Exibe seu inventário de itens.", inline=False)
-        embed.add_field(name="!boss use <item>", value="Usa um item do seu inventário. Exemplo: `n!boss use Remédio Antiviral`", inline=False)
-        embed.add_field(name="!boss rank", value="Exibe o ranking dos melhores jogadores.", inline=False)
-        embed.add_field(name="!boss help", value="Exibe esta mensagem de ajuda.", inline=False)
-        await ctx.send(embed=embed)
-
-    @commands.command(name="rank")
-    async def rank_command(self, ctx):
-        """Exibe o ranking dos melhores jogadores."""
-        async with self.bot.pool.acquire() as connection:
-            top_players = await connection.fetch(
-                "SELECT user_id, xp FROM players ORDER BY xp DESC LIMIT 10"
-            )
-        ranking = "\n".join([f"<@{p['user_id']}> - {p['xp']} XP" for p in top_players])
-        embed = discord.Embed(
-            title="🏆 Ranking de Sobreviventes",
-            description=ranking,
-            color=discord.Color.gold()
-        )
-        await ctx.send(embed=embed)
-
-    @commands.command(name="help")
-    async def help_command(self, ctx):
-        """Exibe a ajuda dos comandos do bot."""
-        embed = discord.Embed(
-            title="📜 Ajuda dos Comandos do Bot",
-            color=discord.Color.gold()
-        )
-        embed.add_field(name="!boss", value="Invoca ou ataca o boss. Use no canal designado para combates.", inline=False)
-        embed.add_field(name="!boss status", value="Exibe o status atual do boss.", inline=False)
-        embed.add_field(name="!boss stats", value="Exibe suas estatísticas pessoais.", inline=False)
-        embed.add_field(name="!boss inventory", value="Exibe seu inventário de itens.", inline=False)
-        embed.add_field(name="!boss use <item>", value="Usa um item do seu inventário. Exemplo: `n!boss use Remédio Antiviral`", inline=False)
-        embed.add_field(name="!boss rank", value="Exibe o ranking dos melhores jogadores.", inline=False)
-        embed.add_field(name="!boss help", value="Exibe esta mensagem de ajuda.", inline=False)
-        await ctx.send(embed=embed)
-
-    # Sistema de mudança de status do bot
-    @tasks.loop(minutes=10)
-    async def change_status(self):
-        """Atualiza o status do bot aleatoriamente a cada 10 minutos."""
-        status_messages = [
-            "sobrevivendo ao apocalipse...",
-            "explorando novas bases...",
-            "caçando zumbis...",
-            "coletando recursos...",
-            "protegendo os sobreviventes...",
-            "negociando embers...",
-            "construindo alianças...",
-            "lutando contra hordas...",
-            "explorando o mapa...",
-            "realizando missões..."
-        ]
-        new_status = random.choice(status_messages)
-        await self.bot.change_presence(activity=discord.Game(new_status))
-
-    @change_status.before_loop
-    async def before_change_status(self):
-        await self.bot.wait_until_ready()
-
-    # Sistema de ranking a cada 2 horas
-    @tasks.loop(hours=2)
-    async def rank_update(self):
-        """Atualiza o ranking dos melhores jogadores a cada 2 horas."""
-        async with self.bot.pool.acquire() as connection:
-            top_players = await connection.fetch(
-                "SELECT user_id, xp FROM players ORDER BY xp DESC LIMIT 10"
-            )
-        ranking = "\n".join([f"<@{p['user_id']}> - {p['xp']} XP" for p in top_players])
-        embed = discord.Embed(
-            title="🏆 Ranking de Sobreviventes",
-            description=ranking,
-            color=discord.Color.gold()
-        )
-        await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-
-    @rank_update.before_loop
-    async def before_rank_update(self):
-        await self.bot.wait_until_ready()
-
-    # Sistema de atualização de status a cada 10 minutos
-    @tasks.loop(minutes=10)
-    async def status_update(self):
-        """Atualiza o status do bot a cada 10 minutos."""
-        status_messages = [
-            "sobrevivendo ao apocalipse...",
-            "explorando novas bases...",
-            "caçando zumbis...",
-            "coletando recursos...",
-            "protegendo os sobreviventes...",
-            "negociando embers...",
-            "construindo alianças...",
-            "lutando contra hordas...",
-            "explorando o mapa...",
-            "realizando missões..."
-        ]
-        new_status = random.choice(status_messages)
-        await self.bot.change_presence(activity=discord.Game(new_status))
-
-    @status_update.before_loop
-    async def before_status_update(self):
-        await self.bot.wait_until_ready()
-
-    # Sistema de help do boss
-    @commands.command(name="boss help")
-    async def boss_help_command(self, ctx):
-        """Exibe a ajuda dos comandos relacionados ao boss."""
-        embed = discord.Embed(
-            title="📜 Ajuda dos Comandos do Boss",
-            color=discord.Color.gold()
-        )
-        embed.add_field(name="!boss", value="Invoca ou ataca o boss. Use no canal designado para combates.", inline=False)
-        embed.add_field(name="!boss status", value="Exibe o status atual do boss.", inline=False)
-        embed.add_field(name="!boss stats", value="Exibe suas estatísticas pessoais.", inline=False)
-        embed.add_field(name="!boss inventory", value="Exibe seu inventário de itens.", inline=False)
-        embed.add_field(name="!boss use <item>", value="Usa um item do seu inventário. Exemplo: `n!boss use Remédio Antiviral`", inline=False)
-        embed.add_field(name="!boss rank", value="Exibe o ranking dos melhores jogadores.", inline=False)
-        embed.add_field(name="!boss help", value="Exibe esta mensagem de ajuda.", inline=False)
-        await ctx.send(embed=embed)
-
-    # Sistema de perfil e inventário via comandos padrão
-    @commands.command(name="profile")
-    async def profile_command(self, ctx):
-        """Exibe o perfil do jogador."""
-        await self.boss_stats(ctx)  # Reutiliza a função de stats
-
-    @commands.command(name="inventory")
-    async def inventory_command(self, ctx):
-        """Exibe o inventário do jogador."""
-        await self.boss_inventory(ctx)  # Reutiliza a função de inventário
-
-    @commands.command(name="use")
-    async def use_item_command(self, ctx, *, item_name: str = None):
-        """Permite que o jogador use um item do inventário."""
-        await self.boss_use_item(ctx, item_name=item_name)  # Reutiliza a função de usar item
-
-    @commands.command(name="stats")
-    async def stats_command(self, ctx):
-        """Exibe as estatísticas do jogador."""
-        await self.boss_stats(ctx)  # Reutiliza a função de stats
-
-    @commands.command(name="help")
-    async def help_command(self, ctx):
-        """Exibe a ajuda dos comandos do bot."""
-        await self.boss_help(ctx)  # Reutiliza a função de ajuda
-
-    # Sistema de atualização de status do bot
-    @tasks.loop(minutes=10)
-    async def change_status(self):
-        """Atualiza o status do bot aleatoriamente a cada 10 minutos."""
-        status_messages = [
-            "sobrevivendo ao apocalipse...",
-            "explorando novas bases...",
-            "caçando zumbis...",
-            "coletando recursos...",
-            "protegendo os sobreviventes...",
-            "negociando embers...",
-            "construindo alianças...",
-            "lutando contra hordas...",
-            "explorando o mapa...",
-            "realizando missões..."
-        ]
-        new_status = random.choice(status_messages)
-        await self.bot.change_presence(activity=discord.Game(new_status))
-
-    @change_status.before_loop
-    async def before_change_status(self):
-        await self.bot.wait_until_ready()
-
-    # Sistema de atualização de ranking a cada 2 horas
-    @tasks.loop(hours=2)
-    async def rank_update(self):
-        """Atualiza o ranking dos melhores jogadores a cada 2 horas."""
-        async with self.bot.pool.acquire() as connection:
-            top_players = await connection.fetch(
-                "SELECT user_id, xp FROM players ORDER BY xp DESC LIMIT 10"
-            )
-        ranking = "\n".join([f"<@{p['user_id']}> - {p['xp']} XP" for p in top_players])
-        embed = discord.Embed(
-            title="🏆 Ranking de Sobreviventes",
-            description=ranking,
-            color=discord.Color.gold()
-        )
-        await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-
-    @rank_update.before_loop
-    async def before_rank_update(self):
-        await self.bot.wait_until_ready()
-
-    # Sistema de help aprimorado
-    @commands.command(name="boss help")
-    async def boss_help(self, ctx):
-        """Exibe a ajuda dos comandos relacionados ao boss."""
-        embed = discord.Embed(
-            title="📜 Ajuda dos Comandos do Boss",
-            color=discord.Color.gold()
-        )
-        embed.add_field(name="!boss", value="Invoca ou ataca o boss. Use no canal designado para combates.", inline=False)
-        embed.add_field(name="!boss status", value="Exibe o status atual do boss.", inline=False)
-        embed.add_field(name="!boss stats", value="Exibe suas estatísticas pessoais.", inline=False)
-        embed.add_field(name="!boss inventory", value="Exibe seu inventário de itens.", inline=False)
-        embed.add_field(name="!boss use <item>", value="Usa um item do seu inventário. Exemplo: `n!boss use Remédio Antiviral`", inline=False)
-        embed.add_field(name="!boss rank", value="Exibe o ranking dos melhores jogadores.", inline=False)
-        embed.add_field(name="!boss help", value="Exibe esta mensagem de ajuda.", inline=False)
-        await ctx.send(embed=embed)
-
-    # Sistema de profile e inventory via comandos padrão
-    @commands.command(name="profile")
-    async def profile_command(self, ctx):
-        """Exibe o perfil do jogador."""
-        await self.boss_stats(ctx)  # Reutiliza a função de stats
-
-    @commands.command(name="inventory")
-    async def inventory_command(self, ctx):
-        """Exibe o inventário do jogador."""
-        await self.boss_inventory(ctx)  # Reutiliza a função de inventário
-
-    @commands.command(name="use")
-    async def use_item_command(self, ctx, *, item_name: str = None):
-        """Permite que o jogador use um item do inventário."""
-        await self.boss_use_item(ctx, item_name=item_name)  # Reutiliza a função de usar item
-
-    @commands.command(name="stats")
-    async def stats_command(self, ctx):
-        """Exibe as estatísticas do jogador."""
-        await self.boss_stats(ctx)  # Reutiliza a função de stats
-
-    @commands.command(name="help")
-    async def help_command(self, ctx):
-        """Exibe a ajuda dos comandos do bot."""
-        await self.boss_help(ctx)  # Reutiliza a função de ajuda
-
-    # Sistema de mudança de status do bot
-    @tasks.loop(minutes=10)
-    async def change_status(self):
-        """Atualiza o status do bot aleatoriamente a cada 10 minutos."""
-        status_messages = [
-            "sobrevivendo ao apocalipse...",
-            "explorando novas bases...",
-            "caçando zumbis...",
-            "coletando recursos...",
-            "protegendo os sobreviventes...",
-            "negociando embers...",
-            "construindo alianças...",
-            "lutando contra hordas...",
-            "explorando o mapa...",
-            "realizando missões..."
-        ]
-        new_status = random.choice(status_messages)
-        await self.bot.change_presence(activity=discord.Game(new_status))
-
-    @change_status.before_loop
-    async def before_change_status(self):
-        await self.bot.wait_until_ready()
-
-    # Sistema de ranking a cada 2 horas
-    @tasks.loop(hours=2)
-    async def rank_update(self):
-        """Atualiza o ranking dos melhores jogadores a cada 2 horas."""
-        async with self.bot.pool.acquire() as connection:
-            top_players = await connection.fetch(
-                "SELECT user_id, xp FROM players ORDER BY xp DESC LIMIT 10"
-            )
-        ranking = "\n".join([f"<@{p['user_id']}> - {p['xp']} XP" for p in top_players])
-        embed = discord.Embed(
-            title="🏆 Ranking de Sobreviventes",
-            description=ranking,
-            color=discord.Color.gold()
-        )
-        await self.bot.get_channel(self.status_channel_id).send(embed=embed)
-
-    @rank_update.before_loop
-    async def before_rank_update(self):
-        await self.bot.wait_until_ready()
-
-    # Sistema de ajuda aprimorado
-    @commands.command(name="boss help")
-    async def boss_help_command(self, ctx):
-        """Exibe a ajuda dos comandos relacionados ao boss."""
-        embed = discord.Embed(
-            title="📜 Ajuda dos Comandos do Boss",
-            color=discord.Color.gold()
-        )
-        embed.add_field(name="!boss", value="Invoca ou ataca o boss. Use no canal designado para combates.", inline=False)
-        embed.add_field(name="!boss status", value="Exibe o status atual do boss.", inline=False)
-        embed.add_field(name="!boss stats", value="Exibe suas estatísticas pessoais.", inline=False)
-        embed.add_field(name="!boss inventory", value="Exibe seu inventário de itens.", inline=False)
-        embed.add_field(name="!boss use <item>", value="Usa um item do seu inventário. Exemplo: `n!boss use Remédio Antiviral`", inline=False)
-        embed.add_field(name="!boss rank", value="Exibe o ranking dos melhores jogadores.", inline=False)
-        embed.add_field(name="!boss help", value="Exibe esta mensagem de ajuda.", inline=False)
-        await ctx.send(embed=embed)
-
-    async def setup(self, ctx):
-        """Configurações iniciais do cog."""
-        await self.ensure_player(ctx.author.id)
-
-    # Comandos adicionais para melhorar a experiência do jogador
-    @commands.command(name="use")
-    async def use_item_command(self, ctx, *, item_name: str = None):
-        """Permite que o jogador use um item do inventário."""
-        if not item_name:
-            await ctx.send("⚠️ Por favor, especifique o item que deseja usar. Exemplo: `n!use Remédio Antiviral`")
-            return
-
-        user_id = ctx.author.id
-        await self.ensure_player(user_id)
-
-        success, message = await self.use_consumable(user_id, item_name)
-        await ctx.send(message)
-
-    async def use_consumable(self, user_id, item_name):
-        """Permite que o jogador use um consumível."""
-        async with self.bot.pool.acquire() as connection:
-            # Verifica se o jogador possui o item
-            item = await connection.fetchrow(
-                "SELECT * FROM inventory WHERE user_id = $1 AND item ILIKE $2",
-                user_id, f"%{item_name}%"
-            )
-
-            if not item:
-                return False, f"⚠️ Você não possui o item **{item_name}** no seu inventário."
-
-            # Remove o item do inventário
-            await connection.execute(
-                "DELETE FROM inventory WHERE id = $1",
-                item['id']
-            )
-
-            # Aplica o efeito do item
-            if item['item'] == self.consumables['antiviral']:
-                # Remove infecção
-                await connection.execute(
-                    "UPDATE players SET infected = FALSE WHERE user_id = $1",
-                    user_id
-                )
-                return True, f"💊 Você usou **{item['item']}** e curou a infecção!"
-            elif item['item'] == self.consumables['soro']:
-                # Remove debuff de dano
-                await connection.execute(
-                    "UPDATE players SET damage_debuff = FALSE WHERE user_id = $1",
-                    user_id
-                )
-                return True, f"💉 Você usou **{item['item']}** e removeu o debuff de dano!"
-            else:
-                return False, f"🔮 O item **{item['item']}** não possui efeitos definidos."
-
-    # Sistema de status do boss
-    @commands.command(name="boss status")
-    async def boss_status_command(self, ctx):
-        """Exibe o status atual do boss."""
+    async def update_boss_phase(self):
+        """Atualiza a fase do boss com base no HP restante."""
         if not self.current_boss:
-            await ctx.send("⚔️ Não há nenhum boss ativo no momento.")
             return
 
+        hp_ratio = self.current_boss["current_hp"] / self.current_boss["hp"]
+
+        # Fase 2
+        if hp_ratio <= self.current_boss["phase_two_trigger"] and self.current_boss["phase"] < 2:
+            self.current_boss["phase"] = 2
+            embed = discord.Embed(
+                title="🔥 Fase 2 do Boss!",
+                description=f"O boss **{self.current_boss['name']}** entrou na Fase 2! Habilidades mais poderosas à vista.",
+                color=discord.Color.orange()
+            )
+            await self.bot.get_channel(self.status_channel_id).send(embed=embed)
+            await self.activate_phase_two()
+
+        # Fase 3
+        elif hp_ratio <= self.current_boss["phase_three_trigger"] and self.current_boss["phase"] < 3:
+            self.current_boss["phase"] = 3
+            embed = discord.Embed(
+                title="💀 Fase 3 do Boss!",
+                description=f"O boss **{self.current_boss['name']}** entrou na Fase 3! Preparem-se para ataques devastadores.",
+                color=discord.Color.dark_purple()
+            )
+            await self.bot.get_channel(self.status_channel_id).send(embed=embed)
+            await self.activate_phase_three()
+
+    async def activate_phase_two(self):
+        """Ativa as habilidades da fase 2 do boss."""
+        abilities = self.current_boss["abilities"]["phase_two"]
+        for ability in abilities:
+            if ability == "Invocação de Minions" and not self.current_boss["minions_active"]:
+                await self.summon_minions()
+            elif ability == "Fúria Zumbi":
+                self.current_boss["attack_power"] += 50
+                await self.bot.get_channel(self.status_channel_id).send(
+                    f"🔥 **{self.current_boss['name']}** aumentou seu poder de ataque!"
+                )
+
+    async def activate_phase_three(self):
+        """Ativa as habilidades da fase 3 do boss."""
+        abilities = self.current_boss["abilities"]["phase_three"]
+        for ability in abilities:
+            if ability == "Explosão Viral":
+                await self.bot.get_channel(self.status_channel_id).send(
+                    f"💉 **{self.current_boss['name']}** lançou uma Explosão Viral! Todos os jogadores receberão uma infecção."
+                )
+                await self.apply_group_infection()
+            elif ability == "Ataque Devastador":
+                self.current_boss["attack_power"] += 100
+                await self.bot.get_channel(self.status_channel_id).send(
+                    f"💀 **{self.current_boss['name']}** lançou um Ataque Devastador!"
+                )
+                # Aqui você pode implementar danos aos jogadores
+
+    async def summon_minions(self):
+        """Invoca minions durante o combate."""
+        self.current_boss["minions_active"] = True
+        minion_count = random.randint(2, 4)
+        summoned_minions = random.sample(self.minions, minion_count)
         embed = discord.Embed(
-            title=f"⚔️ Status do Boss: {self.current_boss['name']}",
-            description=f"**HP:** {self.current_boss['current_hp']}/{self.current_boss['hp']}\n"
-                        f"**Fase:** {self.current_boss['phase']}",
-            color=discord.Color.blue()
+            title="🧟 Minions Invocados!",
+            description=f"**{self.current_boss['name']}** invocou os seguintes minions: {', '.join(summoned_minions)}.",
+            color=discord.Color.dark_blue()
         )
-        await ctx.send(embed=embed)
+        await self.bot.get_channel(self.status_channel_id).send(embed=embed)
+        # Você pode adicionar lógica para que os minions ataquem os jogadores
 
-    # Sistema de estatísticas do jogador
-    @commands.command(name="boss stats")
-    async def boss_stats(self, ctx):
-        """Exibe as estatísticas do jogador."""
-        user_id = ctx.author.id
-        await self.ensure_player(user_id)
-
-        async with self.bot.pool.acquire() as connection:
-            result = await connection.fetchrow("SELECT * FROM players WHERE user_id = $1", user_id)
-
-        if not result:
-            await ctx.send("⚠️ Não foi possível encontrar seu perfil. Tente novamente.")
+    async def apply_group_infection(self):
+        """Aplica infecção a todos os jogadores ativos no combate."""
+        channel = self.bot.get_channel(self.commands_channel_id)
+        if channel is None:
+            print(f"Canal com ID {self.commands_channel_id} não encontrado.")
             return
+        infected_players = []
+        for member in channel.members:
+            if member.id != self.bot.user.id:
+                infected_players.append(member.display_name)
+                await self.apply_infection(member.id)  # Aplica infecção ao jogador
 
-        embed = discord.Embed(
-            title=f"📊 Estatísticas de {ctx.author.display_name}",
-            color=discord.Color.purple()
-        )
-        embed.add_field(name="Nível", value=result['level'], inline=True)
-        embed.add_field(name="XP", value=result['xp'], inline=True)
-        embed.add_field(name="Dinheiro", value=result['money'], inline=True)
-        embed.add_field(name="Ferimentos", value=result['wounds'], inline=True)
-        embed.add_field(name="Infectado", value="Sim" if result['infected'] else "Não", inline=True)
-        embed.add_field(name="Debuff de Dano", value="Sim" if result['damage_debuff'] else "Não", inline=True)
-        await ctx.send(embed=embed)
+        if infected_players:
+            embed = discord.Embed(
+                title="💉 Infecção em Grupo",
+                description=f"**{self.current_boss['name']}** infectou os seguintes jogadores: {', '.join(infected_players)}!",
+                color=discord.Color.dark_red()
+            )
+            await self.bot.get_channel(self.status_channel_id).send(embed=embed)
 
-    # Sistema de inventário do jogador
-    @commands.command(name="boss inventory")
-    async def boss_inventory(self, ctx):
-        """Exibe o inventário do jogador."""
-        user_id = ctx.author.id
-        await self.ensure_player(user_id)
+    @tasks.loop(minutes=5)
+    async def boss_attack_task(self):
+        """Tarefa que faz o boss atacar periodicamente."""
+        if self.current_boss:
+            channel = self.bot.get_channel(self.status_channel_id)
+            if channel is None:
+                print(f"Canal com ID {self.status_channel_id} não encontrado.")
+                return
 
-        async with self.bot.pool.acquire() as connection:
-            items = await connection.fetch("SELECT item FROM inventory WHERE user_id = $1", user_id)
+            # Seleciona um jogador aleatório para atacar
+            channel_combat = self.bot.get_channel(self.commands_channel_id)
+            if channel_combat is None:
+                print(f"Canal com ID {self.commands_channel_id} não encontrado.")
+                return
 
-        if not items:
-            await ctx.send("📦 Seu inventário está vazio.")
-            return
+            combat_members = [member for member in channel_combat.members if member.id != self.bot.user.id]
+            if combat_members:
+                target = random.choice(combat_members)
+                damage = self.current_boss["attack_power"]
+                # Aqui você pode implementar a lógica para aplicar dano ao jogador
+                # Por exemplo, atualizar a coluna 'wounds' no banco de dados
 
-        inventory_list = "\n".join([f"- {item['item']}" for item in items])
-        embed = discord.Embed(
-            title=f"📦 Inventário de {ctx.author.display_name}",
-            description=inventory_list,
-            color=discord.Color.green()
-        )
-        await ctx.send(embed=embed)
+                # Simulação de dano
+                await self.award_wounds(target.id, damage)
 
-    # Sistema de uso de consumíveis
-    @commands.command(name="boss use")
-    async def boss_use_item(self, ctx, *, item_name: str = None):
-        """Permite que o jogador use um item do inventário."""
-        if not item_name:
-            await ctx.send("⚠️ Por favor, especifique o item que deseja usar. Exemplo: `n!boss use Remédio Antiviral`")
-            return
+                embed = discord.Embed(
+                    title="🔨 Ataque do Boss",
+                    description=f"**{self.current_boss['name']}** atacou **{target.display_name}** causando {damage} de dano!",
+                    color=discord.Color.dark_red()
+                )
+                await channel.send(embed=embed)
 
-        user_id = ctx.author.id
-        await self.ensure_player(user_id)
-
-        success, message = await self.use_consumable(user_id, item_name)
-        await ctx.send(message)
-
-    # Sistema de ranking
-    @commands.command(name="boss rank")
-    async def boss_rank_command(self, ctx):
-        """Exibe o ranking dos melhores jogadores."""
+    @tasks.loop(hours=2)
+    async def rank_update(self):
+        """Atualiza o ranking dos melhores jogadores a cada 2 horas."""
         async with self.bot.pool.acquire() as connection:
             top_players = await connection.fetch(
                 "SELECT user_id, xp FROM players ORDER BY xp DESC LIMIT 10"
@@ -1848,80 +561,51 @@ class BossCog(commands.Cog):
             description=ranking,
             color=discord.Color.gold()
         )
-        await ctx.send(embed=embed)
+        await self.bot.get_channel(self.status_channel_id).send(embed=embed)
 
-    # Sistema de ajuda
-    @commands.command(name="boss help")
-    async def boss_help(self, ctx):
-        """Exibe a ajuda dos comandos relacionados ao boss."""
-        embed = discord.Embed(
-            title="📜 Ajuda dos Comandos do Boss",
-            color=discord.Color.gold()
-        )
-        embed.add_field(name="!boss", value="Invoca ou ataca o boss. Use no canal designado para combates.", inline=False)
-        embed.add_field(name="!boss status", value="Exibe o status atual do boss.", inline=False)
-        embed.add_field(name="!boss stats", value="Exibe suas estatísticas pessoais.", inline=False)
-        embed.add_field(name="!boss inventory", value="Exibe seu inventário de itens.", inline=False)
-        embed.add_field(name="!boss use <item>", value="Usa um item do seu inventário. Exemplo: `n!boss use Remédio Antiviral`", inline=False)
-        embed.add_field(name="!boss rank", value="Exibe o ranking dos melhores jogadores.", inline=False)
-        embed.add_field(name="!boss help", value="Exibe esta mensagem de ajuda.", inline=False)
-        await ctx.send(embed=embed)
+    @tasks.loop(minutes=10)
+    async def change_status(self):
+        """Atualiza o status do bot aleatoriamente a cada 10 minutos."""
+        status_messages = [
+            "sobrevivendo ao apocalipse...",
+            "explorando novas bases...",
+            "caçando zumbis...",
+            "coletando recursos...",
+            "protegendo os sobreviventes...",
+            "negociando embers...",
+            "construindo alianças...",
+            "lutando contra hordas...",
+            "explorando o mapa...",
+            "realizando missões..."
+        ]
+        new_status = random.choice(status_messages)
+        await self.bot.change_presence(activity=discord.Game(new_status))
 
-    # Sistema de help via comandos padrão
-    @commands.command(name="help")
-    async def help_command(self, ctx):
-        """Exibe a ajuda dos comandos do bot."""
-        embed = discord.Embed(
-            title="📜 Ajuda dos Comandos do Bot",
-            color=discord.Color.gold()
-        )
-        embed.add_field(name="!boss", value="Invoca ou ataca o boss. Use no canal designado para combates.", inline=False)
-        embed.add_field(name="!boss status", value="Exibe o status atual do boss.", inline=False)
-        embed.add_field(name="!boss stats", value="Exibe suas estatísticas pessoais.", inline=False)
-        embed.add_field(name="!boss inventory", value="Exibe seu inventário de itens.", inline=False)
-        embed.add_field(name="!boss use <item>", value="Usa um item do seu inventário. Exemplo: `n!boss use Remédio Antiviral`", inline=False)
-        embed.add_field(name="!boss rank", value="Exibe o ranking dos melhores jogadores.", inline=False)
-        embed.add_field(name="!boss help", value="Exibe esta mensagem de ajuda.", inline=False)
-        await ctx.send(embed=embed)
+    @boss.before_invoke
+    async def before_boss_command(self, ctx):
+        """Antes de qualquer comando do boss, garante que o perfil do jogador existe."""
+        await self.ensure_player(ctx.author.id)
 
-    # Sistema de perfil via comandos padrão
-    @commands.command(name="profile")
-    async def profile_command(self, ctx):
-        """Exibe o perfil do jogador."""
-        await self.boss_stats(ctx)  # Reutiliza a função de stats
+    @rank_update.before_loop
+    async def before_rank_update(self):
+        await self.bot.wait_until_ready()
 
-    # Sistema de inventário via comandos padrão
-    @commands.command(name="inventory")
-    async def inventory_command(self, ctx):
-        """Exibe o inventário do jogador."""
-        await self.boss_inventory(ctx)  # Reutiliza a função de inventário
+    @boss_attack_task.before_loop
+    async def before_boss_attack_task(self):
+        await self.bot.wait_until_ready()
 
-    # Sistema de uso de consumíveis via comandos padrão
-    @commands.command(name="use")
-    async def use_item_command(self, ctx, *, item_name: str = None):
-        """Permite que o jogador use um item do inventário."""
-        await self.boss_use_item(ctx, item_name=item_name)  # Reutiliza a função de usar item
-
-    # Sistema de estatísticas via comandos padrão
-    @commands.command(name="stats")
-    async def stats_command(self, ctx):
-        """Exibe as estatísticas do jogador."""
-        await self.boss_stats(ctx)  # Reutiliza a função de stats
-
-    # Sistema de ajuda via comandos padrão
-    @commands.command(name="help")
-    async def help_command(self, ctx):
-        """Exibe a ajuda dos comandos do bot."""
-        await self.boss_help(ctx)  # Reutiliza a função de ajuda
+    @change_status.before_loop
+    async def before_change_status(self):
+        await self.bot.wait_until_ready()
 
     async def setup(self, ctx):
         """Configurações iniciais do cog."""
         await self.ensure_player(ctx.author.id)
 
+    @commands.Cog.listener()
     async def on_ready(self):
         """Evento que é chamado quando o bot está pronto."""
         print(f"Cog '{self.__class__.__name__}' está pronto!")
 
-# Configuração do cog
 async def setup(bot):
     await bot.add_cog(BossCog(bot))
