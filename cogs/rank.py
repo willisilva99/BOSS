@@ -9,7 +9,6 @@ class RankCog(commands.Cog):
         self.damage_rank = defaultdict(int)
         self.kill_rank = defaultdict(int)
         self.sniper_rank = defaultdict(int)
-        self.rank_display_index = 0
 
         # IDs dos cargos para cada posição de cada ranking
         self.role_ids = {
@@ -23,73 +22,62 @@ class RankCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        # Aguarda um delay para garantir que o bot está completamente conectado
-        await asyncio.sleep(5)  # Delay de 5 segundos para inicialização completa
+        # Aguardar para garantir que o bot está totalmente conectado
+        await asyncio.sleep(5)
         channel = self.bot.get_channel(self.channel_id)
         if channel:
             print(f"Canal de rank encontrado: {channel.name} (ID: {channel.id})")
-            self.show_rank.start()  # Inicia a tarefa de exibição de ranking
+            self.show_damage_rank.start()  # Inicia a tarefa para exibir o ranking de dano
+            self.show_kill_rank.start()  # Inicia a tarefa para exibir o ranking de kills
+            self.show_sniper_rank.start()  # Inicia a tarefa para exibir o ranking de snipers
             self.update_roles.start()  # Inicia a tarefa de atualização de cargos
         else:
             print("Erro: Canal de classificação não encontrado após o delay de inicialização.")
         print("RankCog está pronto!")
 
-    @tasks.loop(minutes=2)
-    async def show_rank(self):
-        """Alterna entre os rankings a cada 2 minutos e envia a mensagem de rank no canal correto."""
-        # Obtenha o canal de rank
+    @tasks.loop(hours=3)
+    async def show_damage_rank(self):
+        """Envia o ranking de dano ao boss no canal específico a cada 3 horas."""
+        await self.send_rank("damage", "🏆 **Top 5 Guerreiros - Dano ao Boss**", "💥", "Dano Causado")
+
+    @tasks.loop(hours=3, minutes=10)
+    async def show_kill_rank(self):
+        """Envia o ranking de matadores de boss no canal específico a cada 3 horas e 10 minutos."""
+        await self.send_rank("kill", "⚔️ **Top 5 Matadores de Bosses**", "💀", "Bosses Derrotados")
+
+    @tasks.loop(hours=3, minutes=20)
+    async def show_sniper_rank(self):
+        """Envia o ranking de colecionadores de snipers no canal específico a cada 3 horas e 20 minutos."""
+        await self.send_rank("sniper", "🔫 **Top 5 Colecionadores de Snipers**", "🎯", "Snipers Conquistadas")
+
+    async def send_rank(self, rank_type, title, emoji, description):
+        """Envia o ranking no canal especificado."""
         channel = self.bot.get_channel(self.channel_id)
         if not channel:
             print("Erro: Canal de classificação não encontrado.")
             return
 
-        # Configura títulos e emojis para cada ranking
-        rank_titles = [
-            "🏆 **Top 5 Guerreiros - Dano ao Boss**",
-            "⚔️ **Top 5 Matadores de Bosses**",
-            "🔫 **Top 5 Colecionadores de Snipers**"
-        ]
-        rank_emojis = ["💥", "💀", "🎯"]
+        # Seleciona o ranking apropriado
+        rank = getattr(self, f"{rank_type}_rank")
+        sorted_rank = sorted(rank.items(), key=lambda x: x[1], reverse=True)[:5]
 
+        # Cria o embed para o ranking
         embed = discord.Embed(
-            title=rank_titles[self.rank_display_index],
-            description="Parabéns aos melhores guerreiros! Lutem para alcançar o topo e mostrar sua força!",
+            title=title,
+            description="Aqui estão os heróis que se destacaram! Parabéns aos líderes!",
             color=discord.Color.orange()
         )
-        embed.set_thumbnail(url="https://i.postimg.cc/Y9TKwnJp/trophy-icon.png")  # Ícone de troféu
+        embed.set_thumbnail(url="https://i.postimg.cc/Y9TKwnJp/trophy-icon.png")
         embed.set_footer(text="Continue batalhando para melhorar seu rank! 💪")
 
-        # Exibir o ranking correto com base no índice atual
-        if self.rank_display_index == 0:
-            sorted_rank = sorted(self.damage_rank.items(), key=lambda x: x[1], reverse=True)
-            for i, (user_id, damage) in enumerate(sorted_rank[:5], 1):
-                emoji = rank_emojis[0]
-                embed.add_field(
-                    name=f"{emoji} {i}. <@{user_id}>",
-                    value=f"**Dano Causado:** {damage} 💥",
-                    inline=False
-                )
-        elif self.rank_display_index == 1:
-            sorted_rank = sorted(self.kill_rank.items(), key=lambda x: x[1], reverse=True)
-            for i, (user_id, kills) in enumerate(sorted_rank[:5], 1):
-                emoji = rank_emojis[1]
-                embed.add_field(
-                    name=f"{emoji} {i}. <@{user_id}>",
-                    value=f"**Bosses Derrotados:** {kills} 💀",
-                    inline=False
-                )
-        else:
-            sorted_rank = sorted(self.sniper_rank.items(), key=lambda x: x[1], reverse=True)
-            for i, (user_id, snipers) in enumerate(sorted_rank[:5], 1):
-                emoji = rank_emojis[2]
-                embed.add_field(
-                    name=f"{emoji} {i}. <@{user_id}>",
-                    value=f"**Snipers Conquistadas:** {snipers} 🎯",
-                    inline=False
-                )
+        for i, (user_id, score) in enumerate(sorted_rank, 1):
+            embed.add_field(
+                name=f"{emoji} {i}. <@{user_id}>",
+                value=f"**{description}:** {score}",
+                inline=False
+            )
 
         await channel.send(embed=embed)
-        self.rank_display_index = (self.rank_display_index + 1) % 3  # Alterna entre os três ranks
 
     @tasks.loop(hours=3)
     async def update_roles(self):
@@ -99,13 +87,10 @@ class RankCog(commands.Cog):
             print("Erro: Servidor não encontrado.")
             return
 
-        # Atualiza o Top 3 dos rankings de acordo com o rank atual
-        if self.rank_display_index == 0:
-            await self.update_top_roles(guild, self.damage_rank, self.role_ids["damage"])
-        elif self.rank_display_index == 1:
-            await self.update_top_roles(guild, self.kill_rank, self.role_ids["kill"])
-        elif self.rank_display_index == 2:
-            await self.update_top_roles(guild, self.sniper_rank, self.role_ids["sniper"])
+        # Atualiza o Top 3 de todos os rankings de acordo com o rank atual
+        await self.update_top_roles(guild, self.damage_rank, self.role_ids["damage"])
+        await self.update_top_roles(guild, self.kill_rank, self.role_ids["kill"])
+        await self.update_top_roles(guild, self.sniper_rank, self.role_ids["sniper"])
 
     async def update_top_roles(self, guild, ranking, role_ids):
         """Atribui cargos ao Top 3 de um ranking específico e remove cargos antigos."""
