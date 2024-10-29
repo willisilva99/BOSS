@@ -1,10 +1,12 @@
 import discord
 from discord.ext import commands
 import random
+from rank import RankCog  # Importa o RankCog
 
 class BossCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.rank_cog = RankCog(bot)  # Instância do RankCog
         self.current_boss = None  # Inicialmente, sem boss ativo
         self.cooldown_time = 7200  # Aumentando para 2 horas (7200 segundos)
         self.last_attack_time = {}
@@ -131,9 +133,14 @@ class BossCog(commands.Cog):
                 embed.set_image(url=self.boss_images[boss_image_key]["default"])
             await ctx.send(embed=embed)
         else:
+            # Registro de dano
             if user_id not in self.last_attack_time or (ctx.message.created_at.timestamp() - self.last_attack_time[user_id]) >= self.cooldown_time:
                 damage = random.randint(50, 200)
                 self.current_boss["hp"] -= damage
+
+                # Registrar o dano no RankCog
+                self.rank_cog.record_damage(user_id, damage)
+
                 self.last_attack_time[user_id] = ctx.message.created_at.timestamp()
                 embed = discord.Embed(
                     title="🎯 Ataque no Boss!",
@@ -147,6 +154,7 @@ class BossCog(commands.Cog):
                     embed.set_image(url=self.boss_images[boss_image_key]["attack"])
                 await ctx.send(embed=embed)
 
+                # Chance do boss contra-atacar
                 if random.randint(1, 100) <= self.current_boss["attack_chance"]:
                     boss_damage = random.randint(*self.current_boss["damage_range"])
                     embed = discord.Embed(
@@ -168,7 +176,7 @@ class BossCog(commands.Cog):
                     if boss_image_key:
                         embed.set_image(url=self.boss_images[boss_image_key]["defeated"])
                     await ctx.send(embed=embed)
-                    self.current_boss = None
+                    self.current_boss = None  # Reinicia o boss para próxima invocação
                 elif await self.attempt_boss_escape():
                     embed = discord.Embed(
                         title="🏃‍♂️ O Boss Fugiu!",
@@ -179,8 +187,9 @@ class BossCog(commands.Cog):
                     if boss_image_key:
                         embed.set_image(url=self.boss_images[boss_image_key]["flee"])
                     await ctx.send(embed=embed)
-                    self.current_boss = None
+                    self.current_boss = None  # Reinicia o boss para próxima invocação
             else:
+                # Usuário está em cooldown
                 time_remaining = int(self.cooldown_time - (ctx.message.created_at.timestamp() - self.last_attack_time[user_id]))
                 minutes, seconds = divmod(time_remaining, 60)
                 embed = discord.Embed(
