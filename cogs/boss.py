@@ -5,16 +5,14 @@ import random
 class BossCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.current_boss = None  # Inicialmente, sem boss ativo
-        self.cooldown_time = 7200  # Aumentando para 2 horas (7200 segundos)
+        self.current_boss = None
+        self.cooldown_time = 7200
         self.last_attack_time = {}
         self.snipers = ["🔫 SNIPER BOSS RARA", "🔥 SNIPER EMBERIUM", "💎 SNIPER DAMANTY"]
+        self.damage_data = {}
+        self.kills_data = {}
 
-        # Dados para simular rankings de dano e mortes (substituindo RankCog)
-        self.damage_data = {}  # Armazenamento de dano por jogador
-        self.kills_data = {}  # Armazenamento de mortes por jogador
-
-        # URLs das imagens dos bosses
+        # URLs das imagens dos bosses e mensagens de ação
         self.boss_images = {
             "Gigante Emberium": {
                 "default": "https://i.postimg.cc/Gtfm6xSL/DALL-E-2024-10-29-09-18-46-A-powerful-zombie-boss-named-Emberium-for-a-game-featuring-an-exagge.webp",
@@ -39,42 +37,39 @@ class BossCog(commands.Cog):
             }
         }
 
-        # Mapear nomes dos bosses para correspondência no dicionário de imagens
         self.boss_image_keys = {
-            "👹 Mega Boss": "Mega Boss",
+            "💀 Gigante Emberium": "Gigante Emberium",
             "👻 Boss das Sombras": "Boss das Sombras",
-            "💀 Gigante Emberium": "Gigante Emberium"
-        }
-
-        # URLs das imagens das snipers
-        self.sniper_images = {
-            "SNIPER BOSS RARA": {
-                "default": "https://i.postimg.cc/50hC80DG/DALL-E-2024-10-29-10-21-27-A-rugged-survivor-in-an-apocalyptic-setting-holding-the-Emberium-Snip.webp",
-                "broken": "https://i.postimg.cc/mDz9cMpC/DALL-E-2024-10-23-18-A-rugged-survivor-in-an-apocalyptic-setting-holding-a-completely-shatt.webp"
-            },
-            "SNIPER EMBERIUM": {
-                "default": "https://i.postimg.cc/nh2BNnQj/DALL-E-2024-10-29-10-24-23-A-rugged-survivor-in-an-apocalyptic-setting-confidently-wielding-the.webp",
-                "broken": "https://i.postimg.cc/1zzwQbpW/DALL-E-2024-10-29-10-31-58-A-rugged-survivor-in-an-apocalyptic-setting-holding-a-Sniper-Boss-Rar.webp"
-            },
-            "SNIPER DAMANTY": {
-                "default": "https://i.postimg.cc/qv42mNgH/DALL-E-2024-10-29-10-32-54-A-rugged-survivor-in-an-apocalyptic-setting-confidently-holding-the-S.webp",
-                "broken": "https://i.postimg.cc/MGrRKt5z/DALL-E-2024-10-29-10-33-40-A-rugged-survivor-in-an-apocalyptic-setting-holding-a-Sniper-Damanty.webp"
-            }
+            "👹 Mega Boss": "Mega Boss"
         }
 
         # Lista de bosses com diferentes características e HP elevado para mais dificuldade
         self.bosses = [
-            {"name": "👹 Mega Boss", "hp": 5000, "attack_chance": 30, "damage_range": (50, 150)},
-            {"name": "👻 Boss das Sombras", "hp": 7000, "attack_chance": 40, "damage_range": (60, 200)},
             {"name": "💀 Gigante Emberium", "hp": 10000, "attack_chance": 50, "damage_range": (80, 250)},
+            {"name": "👻 Boss das Sombras", "hp": 7000, "attack_chance": 40, "damage_range": (60, 200)},
+            {"name": "👹 Mega Boss", "hp": 5000, "attack_chance": 30, "damage_range": (50, 150)}
         ]
 
         # Diálogos dos bosses
         self.boss_dialogues = {
-            "invocation": ["🌍 O mundo está em ruínas, e você ousa me desafiar?!"],
-            "attack": ["💀 Sua força é insignificante diante de mim!"],
-            "defeat": ["😱 Não pode ser... A era de trevas... foi interrompida!"],
-            "escape": ["🏃‍♂️ Vocês acham que me prenderão? Eu sou o apocalipse!"]
+            "Gigante Emberium": {
+                "invocation": "🌍 O mundo está em ruínas, e você ousa me desafiar?!",
+                "attack": "💀 Sua força é insignificante diante de mim!",
+                "defeat": "😱 Não pode ser... A era de trevas... foi interrompida!",
+                "escape": "🏃‍♂️ Vocês acham que me prenderão? Eu sou o apocalipse!"
+            },
+            "Boss das Sombras": {
+                "invocation": "🌌 Eu sou a escuridão que consome tudo...",
+                "attack": "👻 Você jamais escapará das sombras!",
+                "defeat": "🌑 A escuridão... desapareceu...",
+                "escape": "🌫️ Eu voltarei... mais forte!"
+            },
+            "Mega Boss": {
+                "invocation": "🔥 Quem se atreve a enfrentar o verdadeiro poder?",
+                "attack": "👹 Sinta o calor da minha fúria!",
+                "defeat": "💥 Como... pude... ser derrotado...",
+                "escape": "⚡ Ninguém me segura! Eu sou invencível!"
+            }
         }
 
     async def attempt_boss_escape(self):
@@ -82,15 +77,15 @@ class BossCog(commands.Cog):
         escape_chance = 20  # Exemplo: 20% de chance de o boss fugir
         return random.randint(1, 100) <= escape_chance
 
-    # Método para conceder cargo ao jogador e remover se necessário
-    async def grant_role(self, ctx, user, role_name):
+    async def grant_role(self, ctx, user, role_name, position):
         role = discord.utils.get(ctx.guild.roles, name=role_name)
         if role:
             for member in role.members:
                 if member != user:
                     await member.remove_roles(role)
+                    await ctx.send(f"❌ {member.mention} perdeu o título de **Top {position} Damager**.")
             await user.add_roles(role)
-            await ctx.send(f"🎉 {user.mention} agora possui o cargo **{role_name}** por estar entre os melhores! 🏆")
+            await ctx.send(f"🎉 {user.mention} agora possui o título de **Top {position} Damager**! 🏆")
 
     def record_damage(self, player_id, damage):
         if player_id not in self.damage_data:
@@ -101,27 +96,23 @@ class BossCog(commands.Cog):
         sorted_damage = sorted(self.damage_data.items(), key=lambda x: x[1], reverse=True)
         return [player_id for player_id, _ in sorted_damage[:limit]]
 
-    def get_top_players_by_kills(self, limit=3):
-        sorted_kills = sorted(self.kills_data.items(), key=lambda x: x[1], reverse=True)
-        return [player_id for player_id, _ in sorted_kills[:limit]]
-
     async def update_roles(self, ctx):
         top_damage_players = self.get_top_players_by_damage(limit=3)
-        top_kills_players = self.get_top_players_by_kills(limit=3)
+        roles = ["Top Damager 1", "Top Damager 2", "Top Damager 3"]
 
-        for player_id in top_damage_players:
+        for position, player_id in enumerate(top_damage_players):
             user = await self.bot.fetch_user(player_id)
-            await self.grant_role(ctx, user, "Top Damager")
+            await self.grant_role(ctx, user, roles[position], position + 1)
 
-        for player_id in top_kills_players:
-            user = await self.bot.fetch_user(player_id)
-            await self.grant_role(ctx, user, "Top Killer")
+    def generate_sniper_drop(self):
+        return f"Parabéns! Você recebeu: {random.choice(self.snipers)}"
 
     @commands.command(name="boss")
     async def boss_attack(self, ctx):
-        if ctx.channel.id != 1299092242673303552:
-            channel_link = f"<#{1299092242673303552}>"
-            await ctx.send(f"⚠️ Este comando só pode ser usado no canal {channel_link}.")
+        allowed_channels = [1300853285858578543, 1300853676784484484, 1300854639658270761]
+        if ctx.channel.id not in allowed_channels:
+            allowed_channels_str = ", ".join([f"<#{channel_id}>" for channel_id in allowed_channels])
+            await ctx.send(f"⚠️ Este comando só pode ser usado nos canais: {allowed_channels_str}.")
             return
 
         user_id = ctx.author.id
@@ -129,15 +120,16 @@ class BossCog(commands.Cog):
 
         if not self.current_boss:
             self.current_boss = random.choice(self.bosses).copy()
+            boss_name = self.current_boss["name"]
+            boss_dialogues = self.boss_dialogues[boss_name]
             embed = discord.Embed(
                 title="⚔️ Boss Invocado!",
-                description=f"{display_name} invocou o {self.current_boss['name']} com {self.current_boss['hp']} HP!\n"
-                            f"{random.choice(self.boss_dialogues['invocation'])}\n"
+                description=f"{display_name} invocou o {boss_name} com {self.current_boss['hp']} HP!\n"
+                            f"{boss_dialogues['invocation']}\n"
                             "Todos devem atacá-lo para derrotá-lo!",
                 color=discord.Color.red()
             )
-
-            boss_image_key = self.boss_image_keys.get(self.current_boss["name"], None)
+            boss_image_key = self.boss_image_keys.get(boss_name, None)
             if boss_image_key:
                 embed.set_image(url=self.boss_images[boss_image_key]["default"])
             await ctx.send(embed=embed)
@@ -147,16 +139,16 @@ class BossCog(commands.Cog):
                 self.current_boss["hp"] -= damage
 
                 self.record_damage(user_id, damage)
-
                 self.last_attack_time[user_id] = ctx.message.created_at.timestamp()
+
+                boss_name = self.current_boss["name"]
                 embed = discord.Embed(
                     title="🎯 Ataque no Boss!",
-                    description=f"{display_name} atacou o {self.current_boss['name']} causando {damage} de dano!\n"
+                    description=f"{display_name} atacou o {boss_name} causando {damage} de dano!\n"
                                 f"**HP restante do boss**: {self.current_boss['hp']}",
                     color=discord.Color.orange()
                 )
-
-                boss_image_key = self.boss_image_keys.get(self.current_boss["name"], None)
+                boss_image_key = self.boss_image_keys.get(boss_name, None)
                 if boss_image_key:
                     embed.set_image(url=self.boss_images[boss_image_key]["attack"])
                 await ctx.send(embed=embed)
@@ -167,7 +159,7 @@ class BossCog(commands.Cog):
                     boss_damage = random.randint(*self.current_boss["damage_range"])
                     embed = discord.Embed(
                         title="⚠️ Contra-Ataque do Boss!",
-                        description=f"O {self.current_boss['name']} contra-atacou {display_name}, causando {boss_damage} de dano!",
+                        description=f"O {boss_name} contra-atacou {display_name}, causando {boss_damage} de dano!",
                         color=discord.Color.red()
                     )
                     if boss_image_key:
@@ -178,7 +170,7 @@ class BossCog(commands.Cog):
                     reward_message = self.generate_sniper_drop()
                     embed = discord.Embed(
                         title="🏆 Boss Derrotado!",
-                        description=f"{random.choice(self.boss_dialogues['defeat'])}\n{reward_message}",
+                        description=f"{self.boss_dialogues[boss_name]['defeat']}\n{reward_message}",
                         color=discord.Color.green()
                     )
                     if boss_image_key:
@@ -188,7 +180,7 @@ class BossCog(commands.Cog):
                 elif await self.attempt_boss_escape():
                     embed = discord.Embed(
                         title="🏃‍♂️ O Boss Fugiu!",
-                        description=f"{random.choice(self.boss_dialogues['escape'])}\n"
+                        description=f"{self.boss_dialogues[boss_name]['escape']}\n"
                                     "Você não ganhou nenhuma recompensa.",
                         color=discord.Color.yellow()
                     )
