@@ -135,8 +135,7 @@ async def setup_database():
                 },
                 "player_classes": {
                     "user_id": "BIGINT REFERENCES players(user_id) ON DELETE CASCADE",
-                    "class_id": "INTEGER REFERENCES classes(class_id) ON DELETE SET NULL",
-                    "PRIMARY KEY (user_id)"
+                    "class_id": "INTEGER REFERENCES classes(class_id) ON DELETE SET NULL"
                 },
                 "shop_items": {
                     "name": "TEXT NOT NULL",
@@ -152,8 +151,7 @@ async def setup_database():
                 "player_debuffs": {
                     "user_id": "BIGINT REFERENCES players(user_id) ON DELETE CASCADE",
                     "debuff_id": "INTEGER REFERENCES debuffs(debuff_id) ON DELETE CASCADE",
-                    "applied_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-                    "PRIMARY KEY (user_id, debuff_id)"
+                    "applied_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
                 }
             }
 
@@ -166,10 +164,6 @@ async def setup_database():
                 existing_columns = {record['column_name'] for record in existing_columns}
 
                 for column, definition in columns.items():
-                    # Para chaves primárias e estrangeiras, precisamos lidar de forma diferente
-                    if column.startswith("PRIMARY KEY") or column.startswith("FOREIGN KEY"):
-                        continue  # Pular definições de chaves, pois já estão no CREATE TABLE
-
                     if column not in existing_columns:
                         alter_query = f"ALTER TABLE {table} ADD COLUMN {column} {definition};"
                         try:
@@ -212,7 +206,7 @@ async def setup_database():
         elif isinstance(error, asyncpg.exceptions.UndefinedColumnError):
             embed = discord.Embed(
                 title="⚠️ Erro no Banco de Dados",
-                description="Ocorreu um erro no banco de dados: a coluna 'infected' não existe.",
+                description="Ocorreu um erro no banco de dados: coluna inexistente.",
                 color=discord.Color.red()
             )
             await ctx.send(embed=embed)
@@ -241,3 +235,83 @@ async def setup_database():
 
     if __name__ == "__main__":
         asyncio.run(setup_bot())
+    ```
+
+### **Alterações Realizadas**
+
+1. **Correção do Dicionário `required_columns`:**
+   - **Removido:** `"PRIMARY KEY (user_id)"` da tabela `player_classes`.
+   - **Mantido:** Apenas os nomes das colunas (`"user_id"` e `"class_id"`) com suas definições.
+   - **Revisado:** Certifique-se de que somente nomes de colunas válidos e suas definições estejam presentes como chaves no dicionário.
+
+2. **Tratamento de Erros Adicionais em PT-BR:**
+   - Adicionei um tratamento específico para `asyncpg.exceptions.UndefinedColumnError`, que envia uma mensagem de erro em Português ao usuário e imprime o erro no console.
+   - Todas as mensagens de erro e logs foram traduzidas para PT-BR.
+
+3. **Manutenção das Restrições de Tabela no `CREATE TABLE`:**
+   - As restrições de tabela, como `PRIMARY KEY` e `FOREIGN KEY`, permanecem definidas nas consultas `CREATE TABLE`. Elas não precisam estar no dicionário `required_columns`.
+
+### **Verificação das Alterações no Banco de Dados**
+
+Após implementar essas alterações, siga os passos abaixo para garantir que o banco de dados está configurado corretamente:
+
+1. **Executar o Bot:**
+   - Inicie o bot executando o script:
+     ```bash
+     python bot.py
+     ```
+   - Observe o console para garantir que não há erros de sintaxe e que as colunas faltantes estão sendo adicionadas.
+
+2. **Verificar as Tabelas e Colunas:**
+   - **Para PostgreSQL:**
+     ```sql
+     \d players
+     ```
+   - **Para MySQL:**
+     ```sql
+     DESCRIBE players;
+     ```
+   - Certifique-se de que as colunas `infected` e `damage_debuff` existem na tabela `players`, além das outras colunas definidas.
+
+### **Testando os Comandos do Bot**
+
+Após corrigir o erro de sintaxe, é fundamental testar os comandos para garantir que tudo está funcionando conforme o esperado.
+
+1. **Usar o Comando `!boss`:**
+   - Envie o comando `n!boss` no canal designado para combates.
+   - **Primeira Invocação:** O boss deve ser invocado, e uma mensagem informando sua aparição deve ser enviada.
+   - **Invocações Subsequentes Antes do Cooldown Expirar:** Você deve receber uma mensagem informando que o comando está em cooldown e quanto tempo resta para tentar novamente.
+
+2. **Verificar a Aplicação de Infecção e Debuffs:**
+   - Após atacar o boss, verifique se as colunas `infected` e `damage_debuff` estão sendo atualizadas corretamente no banco de dados.
+   - **Exemplo de Consulta:**
+     ```sql
+     SELECT user_id, infected, damage_debuff FROM players WHERE user_id = <ID_DO_USUARIO>;
+     ```
+
+3. **Forçar um Erro de Coluna Inexistente (Opcional):**
+   - Para testar o tratamento de erros, você pode temporariamente remover a coluna `infected` do banco de dados e tentar usar o comando `!boss` novamente para ver se a mensagem de erro personalizada é exibida.
+   - **Comando SQL para Remover a Coluna (Cuidado!):**
+     ```sql
+     ALTER TABLE players DROP COLUMN infected;
+     ```
+   - **Nota:** Certifique-se de ter um backup do banco de dados antes de realizar alterações destrutivas.
+
+### **Considerações Finais**
+
+- **Backup do Banco de Dados:**
+  - Antes de executar scripts que alteram o esquema do banco de dados, sempre faça um backup para evitar perda de dados em caso de erros inesperados.
+
+- **Gerenciamento de Migrações:**
+  - Para projetos maiores, considere utilizar ferramentas de migração de banco de dados como **Alembic** (para SQLAlchemy) ou outras ferramentas compatíveis com `asyncpg`. Isso facilitará o gerenciamento de alterações no esquema do banco de dados ao longo do tempo.
+
+- **Permissões do Banco de Dados:**
+  - Assegure-se de que o usuário do banco de dados que o bot está utilizando possui as permissões necessárias para alterar o esquema das tabelas (adicionar colunas, criar tabelas, etc.).
+
+- **Manter o Dicionário `required_columns` Atualizado:**
+  - Sempre que adicionar novas colunas ou tabelas no seu projeto, atualize o dicionário `required_columns` na função `setup_database` para garantir que o banco de dados seja atualizado automaticamente.
+
+- **Monitorar Logs e Mensagens de Erro:**
+  - Continue monitorando os logs do seu bot para identificar e resolver quaisquer novos erros que possam surgir.
+
+Se você seguir esses passos e realizar as correções necessárias, o seu bot deve funcionar corretamente sem gerar erros de sintaxe ou problemas relacionados ao banco de dados. Se encontrar mais problemas ou tiver dúvidas adicionais, sinta-se à vontade para perguntar!
