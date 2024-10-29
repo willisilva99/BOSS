@@ -3,7 +3,12 @@ from discord.ext import commands, tasks
 from collections import defaultdict
 import asyncpg
 import asyncio
+import os
 import random
+from dotenv import load_dotenv
+
+# Carregar variáveis de ambiente do arquivo .env
+load_dotenv()
 
 class RankCog(commands.Cog):
     def __init__(self, bot):
@@ -34,20 +39,21 @@ class RankCog(commands.Cog):
 
     async def cog_load(self):
         # Inicializa a conexão com o banco de dados
-        self.db_pool = await asyncpg.create_pool(dsn="DATABASE_URL")
+        self.db_pool = await asyncpg.create_pool(dsn=os.getenv("DATABASE_URL"))
+        await self.create_tables()  # Cria tabelas no banco de dados
+        await self.load_rankings()  # Carrega rankings do banco de dados
 
-        # Cria a tabela, se não existir
-        await self.db_pool.execute("""
-            CREATE TABLE IF NOT EXISTS player_rankings (
-                user_id BIGINT PRIMARY KEY,
-                total_damage INTEGER DEFAULT 0,
-                kills INTEGER DEFAULT 0,
-                snipers INTEGER DEFAULT 0
-            )
-        """)
-
-        # Carrega os dados existentes no banco de dados para os rankings
-        await self.load_rankings()
+    async def create_tables(self):
+        """Cria as tabelas necessárias no banco de dados."""
+        async with self.db_pool.acquire() as conn:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS player_rankings (
+                    user_id BIGINT PRIMARY KEY,
+                    total_damage INTEGER DEFAULT 0,
+                    kills INTEGER DEFAULT 0,
+                    snipers INTEGER DEFAULT 0
+                )
+            """)
 
     async def load_rankings(self):
         """Carrega os rankings do banco de dados ao iniciar o bot."""
