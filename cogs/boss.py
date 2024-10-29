@@ -33,6 +33,11 @@ class BossCog(commands.Cog):
                 return f"🎉 Parabéns! Você ganhou uma {selected_sniper}!"
         return "😢 O boss não deixou nenhuma sniper desta vez."
 
+    async def attempt_boss_escape(self):
+        """Verifica se o boss consegue fugir."""
+        escape_chance = random.randint(1, 100)
+        return escape_chance <= 15  # 15% de chance de fuga
+
     @commands.command(name="boss")
     async def boss_attack(self, ctx):
         """Permite atacar o boss e, se derrotado, concede uma premiação."""
@@ -83,6 +88,16 @@ class BossCog(commands.Cog):
                     )
                     await ctx.send(embed=embed)
                     self.current_boss = None  # Reinicia o boss para próxima invocação
+                else:
+                    # Verifica se o boss tenta fugir
+                    if await self.attempt_boss_escape():
+                        embed = discord.Embed(
+                            title="🏃‍♂️ O Boss Fugiu!",
+                            description=f"O {self.current_boss['name']} conseguiu escapar! Você não ganhou nenhuma recompensa.",
+                            color=discord.Color.yellow()
+                        )
+                        await ctx.send(embed=embed)
+                        self.current_boss = None  # Reinicia o boss para próxima invocação
             else:
                 # Usuário está em cooldown
                 time_remaining = int(self.cooldown_time - (ctx.message.created_at.timestamp() - self.last_attack_time[user_id]))
