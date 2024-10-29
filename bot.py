@@ -1,8 +1,6 @@
 import discord
 from discord.ext import commands, tasks
 import os
-import asyncpg
-import asyncio
 import random
 from dotenv import load_dotenv
 
@@ -16,9 +14,6 @@ intents.guilds = True
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="n!", intents=intents)
-
-# URL de conexão com o banco de dados
-DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Lista de cogs
 cogs = [
@@ -40,90 +35,30 @@ status_messages = [
     "realizando missões..."
 ]
 
-async def setup_database():
-    """Conecta ao banco de dados e cria as tabelas, se não existirem."""
-    try:
-        bot.pool = await asyncpg.create_pool(dsn=DATABASE_URL, min_size=1, max_size=10)
-        print("Conexão com o banco de dados estabelecida com sucesso.")
+# Simulando as tabelas do banco de dados com dicionários
+players = {}
+inventory = {}
+classes = {}
+player_classes = {}
+shop_items = {}
+debuffs = {}
+player_debuffs = {}
+snipers = {}
 
-        async with bot.pool.acquire() as connection:
-            # Criação das tabelas, caso não existam
-            await connection.execute("""
-                CREATE TABLE IF NOT EXISTS players (
-                    user_id BIGINT PRIMARY KEY,
-                    wounds INTEGER DEFAULT 0,
-                    money INTEGER DEFAULT 1000,
-                    ember INTEGER DEFAULT 0,
-                    xp INTEGER DEFAULT 0,
-                    level INTEGER DEFAULT 1,
-                    infected BOOLEAN DEFAULT FALSE,
-                    damage_debuff BOOLEAN DEFAULT FALSE
-                );
-            """)
+# Funções de manipulação para os "dados" simulados
+def add_player(user_id):
+    if user_id not in players:
+        players[user_id] = {
+            "wounds": 0,
+            "money": 1000,
+            "ember": 0,
+            "xp": 0,
+            "level": 1,
+            "infected": False,
+            "damage_debuff": False
+        }
 
-            await connection.execute("""
-                CREATE TABLE IF NOT EXISTS inventory (
-                    id SERIAL PRIMARY KEY,
-                    user_id BIGINT REFERENCES players(user_id) ON DELETE CASCADE,
-                    item TEXT NOT NULL
-                );
-            """)
-
-            await connection.execute("""
-                CREATE TABLE IF NOT EXISTS classes (
-                    class_id SERIAL PRIMARY KEY,
-                    name TEXT UNIQUE NOT NULL,
-                    description TEXT
-                );
-            """)
-
-            await connection.execute("""
-                CREATE TABLE IF NOT EXISTS player_classes (
-                    user_id BIGINT REFERENCES players(user_id) ON DELETE CASCADE,
-                    class_id INTEGER REFERENCES classes(class_id) ON DELETE SET NULL,
-                    PRIMARY KEY (user_id)
-                );
-            """)
-
-            await connection.execute("""
-                CREATE TABLE IF NOT EXISTS shop_items (
-                    item_id SERIAL PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    description TEXT,
-                    cost INTEGER NOT NULL,
-                    rarity TEXT CHECK (rarity IN ('comum', 'raro', 'épico')) NOT NULL
-                );
-            """)
-
-            await connection.execute("""
-                CREATE TABLE IF NOT EXISTS debuffs (
-                    debuff_id SERIAL PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    description TEXT,
-                    duration INTEGER NOT NULL
-                );
-            """)
-
-            await connection.execute("""
-                CREATE TABLE IF NOT EXISTS player_debuffs (
-                    user_id BIGINT REFERENCES players(user_id) ON DELETE CASCADE,
-                    debuff_id INTEGER REFERENCES debuffs(debuff_id) ON DELETE CASCADE,
-                    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (user_id, debuff_id)
-                );
-            """)
-
-            await connection.execute("""
-                CREATE TABLE IF NOT EXISTS snipers (
-                    id SERIAL PRIMARY KEY,
-                    user_id BIGINT UNIQUE NOT NULL,
-                    sniper_type VARCHAR(20) NOT NULL,
-                    obtained_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-            print("Tabelas do banco de dados garantidas.")
-    except Exception as e:
-        print(f"Erro ao conectar ao banco de dados: {e}")
+# Funções para manipular o inventário, classes e outros dados podem ser adicionadas conforme a necessidade
 
 async def load_cogs():
     """Carrega todos os cogs listados."""
@@ -156,14 +91,6 @@ async def on_command_error(ctx, error):
             color=discord.Color.orange()
         )
         await ctx.send(embed=embed)
-    elif isinstance(error, asyncpg.exceptions.UndefinedColumnError):
-        embed = discord.Embed(
-            title="⚠️ Erro no Banco de Dados",
-            description="Ocorreu um erro no banco de dados: coluna inexistente.",
-            color=discord.Color.red()
-        )
-        await ctx.send(embed=embed)
-        print(f"Erro detectado: {error}")
     else:
         embed = discord.Embed(
             title="⚠️ Erro de Comando",
@@ -181,7 +108,6 @@ async def on_message(message):
     await bot.process_commands(message)
 
 async def setup_bot():
-    await setup_database()  # Configura e conecta o banco de dados
     await load_cogs()       # Carrega os cogs
     await bot.start(os.getenv("TOKEN"))  # Inicia o bot com o token do .env
 
