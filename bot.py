@@ -39,6 +39,9 @@ status_messages = [
     "realizando missões..."
 ]
 
+# 🔥 **Adicionar Tabela Snipers**
+# Este trecho será adicionado na função setup_database()
+
 async def setup_database():
     # Conecta ao banco de dados e cria as tabelas, se não existirem
     try:
@@ -46,7 +49,7 @@ async def setup_database():
         print("Conexão com o banco de dados estabelecida com sucesso.")
 
         async with bot.pool.acquire() as connection:
-            # Criação das tabelas no banco de dados
+            # Criação das tabelas existentes no banco de dados
             await connection.execute("""
                 CREATE TABLE IF NOT EXISTS players (
                     user_id BIGINT PRIMARY KEY,
@@ -117,7 +120,18 @@ async def setup_database():
                 );
             """)
 
-            # Definição das colunas necessárias para cada tabela
+            # 🔥 **Adicionar Tabela Snipers**
+            await connection.execute("""
+                CREATE TABLE IF NOT EXISTS snipers (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT UNIQUE NOT NULL,
+                    sniper_type VARCHAR(20) NOT NULL,
+                    obtained_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            print("Tabela 'snipers' garantida no banco de dados.")
+
+            # Definição das colunas necessárias para cada tabela (se necessário)
             required_columns = {
                 "players": {
                     "wounds": "INTEGER DEFAULT 0",
@@ -154,6 +168,12 @@ async def setup_database():
                     "user_id": "BIGINT REFERENCES players(user_id) ON DELETE CASCADE",
                     "debuff_id": "INTEGER REFERENCES debuffs(debuff_id) ON DELETE CASCADE",
                     "applied_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                },
+                "snipers": {  # Adiciona as colunas para a tabela snipers, caso necessário
+                    "id": "SERIAL PRIMARY KEY",
+                    "user_id": "BIGINT UNIQUE NOT NULL",
+                    "sniper_type": "VARCHAR(20) NOT NULL",
+                    "obtained_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
                 }
             }
 
