@@ -78,16 +78,19 @@ class RankCog(commands.Cog):
         """Registra o dano causado por um usuário e atualiza o banco de dados."""
         self.damage_rank[user_id] += damage
         asyncio.create_task(self.update_database(user_id, "total_damage", damage))
+        print(f"Registro de dano: {user_id} causou {damage} de dano.")  # Adicionei um log para verificação
 
     def record_kill(self, user_id):
         """Registra uma kill no boss por um usuário e atualiza o banco de dados."""
         self.kill_rank[user_id] += 1
         asyncio.create_task(self.update_database(user_id, "kills", 1))
+        print(f"Registro de kill: {user_id} realizou uma kill.")  # Adicionei um log para verificação
 
     def record_sniper(self, user_id):
         """Registra uma sniper ganha por um usuário e atualiza o banco de dados."""
         self.sniper_rank[user_id] += 1
         asyncio.create_task(self.update_database(user_id, "snipers", 1))
+        print(f"Registro de sniper: {user_id} ganhou uma sniper.")  # Adicionei um log para verificação
 
     @commands.Cog.listener()
     async def on_ready(self):
