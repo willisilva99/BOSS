@@ -113,11 +113,6 @@ class BossCog(commands.Cog):
         user_id = ctx.author.id
         display_name = f"<@{ctx.author.id}>"  # Menciona o usuário com o símbolo @
 
-        # Limpa mensagens anteriores do chat
-        async for message in ctx.channel.history(limit=5):  # Limpa as últimas 5 mensagens
-            if message.author == self.bot.user:
-                await message.delete()
-
         if not self.current_boss:
             # Escolhe um boss aleatório para invocar
             self.current_boss = random.choice(self.bosses).copy()
