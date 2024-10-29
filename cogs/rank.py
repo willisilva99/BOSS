@@ -20,7 +20,7 @@ class RankCog(commands.Cog):
         # URLs das imagens para cada ranking
         self.rank_images = {
             "damage": "https://i.postimg.cc/MTJwRfzg/DALL-E-2024-10-29-15-12-42-Create-an-apocalyptic-themed-background-image-titled-Top-Rank-Dano-N.webp",
-            "kill": "https://i.postimg.cc/y85s1rt1/DALL-E-2024-10-29-15-07-02-Create-an-apocalyptic-background-image-titled-Top-Rank-Kill-Nova-Era.webp",
+            "kill": "https://i.postimg.cc/y85s1rt1/DALL-E-2024-10-29-15-07-02-Create-an-apocalyptic-themed-background-image-titled-Top-Rank-Kill-Nova-Era.webp",
             "sniper": "https://i.postimg.cc/R0H9NLxc/DALL-E-2024-10-29-15-20-36-Create-an-apocalyptic-themed-background-image-titled-Top-Sniper-Nova.webp"
         }
 
@@ -78,19 +78,19 @@ class RankCog(commands.Cog):
         """Registra o dano causado por um usuário e atualiza o banco de dados."""
         self.damage_rank[user_id] += damage
         asyncio.create_task(self.update_database(user_id, "total_damage", damage))
-        print(f"Registro de dano: {user_id} causou {damage} de dano.")  # Log de registro
+        print(f"Registro de dano: {user_id} causou {damage} de dano.")
 
     def record_kill(self, user_id):
         """Registra uma kill no boss por um usuário e atualiza o banco de dados."""
         self.kill_rank[user_id] += 1
         asyncio.create_task(self.update_database(user_id, "kills", 1))
-        print(f"Registro de kill: {user_id} realizou uma kill.")  # Log de registro
+        print(f"Registro de kill: {user_id} realizou uma kill.")
 
     def record_sniper(self, user_id):
         """Registra uma sniper ganha por um usuário e atualiza o banco de dados."""
         self.sniper_rank[user_id] += 1
         asyncio.create_task(self.update_database(user_id, "snipers", 1))
-        print(f"Registro de sniper: {user_id} ganhou uma sniper.")  # Log de registro
+        print(f"Registro de sniper: {user_id} ganhou uma sniper.")
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -158,3 +158,35 @@ class RankCog(commands.Cog):
 
     @tasks.loop(hours=3)
     async def update_roles(self):
+        """Atualiza os cargos dos Top 3 de cada ranking a cada 3 horas."""
+        guild = self.bot.guilds[0]  # Assume o primeiro servidor do bot
+        if not guild:
+            print("Erro: Servidor não encontrado.")
+            return
+
+        # Atualiza o Top 3 de todos os rankings de acordo com o rank atual
+        await self.update_top_roles(guild, self.damage_rank, self.role_ids["damage"])
+        await self.update_top_roles(guild, self.kill_rank, self.role_ids["kill"])
+        await self.update_top_roles(guild, self.sniper_rank, self.role_ids["sniper"])
+
+    async def update_top_roles(self, guild, ranking, role_ids):
+        """Atribui cargos ao Top 3 de um ranking específico e remove cargos antigos."""
+        # Ordena o ranking e pega o Top 3
+        sorted_rank = sorted(ranking.items(), key=lambda x: x[1], reverse=True)[:3]
+
+        for index, (user_id, _) in enumerate(sorted_rank):
+            member = guild.get_member(user_id)
+            if member:
+                # Atribui o cargo correspondente ao ranking atual
+                role = guild.get_role(role_ids[index])
+                await member.add_roles(role, reason="Atualização de rank")
+        
+        # Remove cargos dos usuários que saíram do Top 3
+        for role_id in role_ids:
+            role = guild.get_role(role_id)
+            for member in role.members:
+                if member.id not in [user_id for user_id, _ in sorted_rank]:
+                    await member.remove_roles(role, reason="Removido do Top 3")
+
+async def setup(bot):
+    await bot.add_cog(RankCog(bot))
